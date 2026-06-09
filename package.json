@@ -1,6 +1,6 @@
 {
   "name": "sitescope",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "SiteScope — Pre-construction site research tool by Posch Ventures",
   "private": true,
   "scripts": {
