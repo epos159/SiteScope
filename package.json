@@ -1,0 +1,12 @@
+{
+  "name": "sitescope",
+  "version": "1.0.0",
+  "description": "SiteScope — Pre-construction site research tool by Posch Ventures",
+  "private": true,
+  "scripts": {
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npm run dev",
+    "install:all": "cd server && npm install && cd ../client && npm install",
+    "start:server": "cd server && npm start"
+  }
+}

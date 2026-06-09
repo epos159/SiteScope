@@ -1,0 +1,154 @@
+/* ─── App Shell ──────────────────────────────────────────────── */
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: var(--color-bg);
+}
+
+/* ─── Header ─────────────────────────────────────────────────── */
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 24px;
+  height: 62px;
+  background: var(--color-header);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  flex-shrink: 0;
+}
+
+.app-header-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  color: #fff;
+  text-decoration: none;
+}
+
+.app-header-logo {
+  font-size: 22px;
+  color: var(--color-accent);
+  line-height: 1;
+}
+
+.app-header-name {
+  display: block;
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.app-header-by {
+  display: block;
+  font-size: var(--font-size-xs);
+  color: rgba(255, 255, 255, 0.45);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+
+.app-header-search {
+  flex: 1;
+  max-width: 680px;
+  margin: 0 auto;
+}
+
+.app-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* ─── Map Section ─────────────────────────────────────────────── */
+.app-map-section {
+  height: 55vh;
+  min-height: 320px;
+  flex-shrink: 0;
+  position: relative;
+}
+
+/* ─── Data Section ────────────────────────────────────────────── */
+.app-data-section {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0;
+  background: var(--color-bg);
+}
+
+/* ─── Empty / Error State ─────────────────────────────────────── */
+.app-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+}
+
+.app-empty-inner {
+  max-width: 520px;
+  text-align: center;
+}
+
+.app-empty-icon {
+  font-size: 48px;
+  margin-bottom: 20px;
+  line-height: 1;
+}
+
+.app-empty-inner h2 {
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 12px;
+}
+
+.app-empty-inner p {
+  font-size: var(--font-size-md);
+  color: var(--color-text-secondary);
+  line-height: 1.65;
+  margin-bottom: 24px;
+}
+
+.app-empty-counties {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.app-empty-error h2 {
+  color: var(--color-error);
+}
+
+/* ─── Footer ──────────────────────────────────────────────────── */
+.app-footer {
+  padding: 12px 24px;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  text-align: center;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+/* ─── Responsive ──────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .app-header {
+    padding: 0 16px;
+    gap: 10px;
+  }
+
+  .app-header-by {
+    display: none;
+  }
+
+  .app-map-section {
+    height: 45vh;
+  }
+}
