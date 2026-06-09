@@ -7,7 +7,7 @@ import BuildingsCard from './BuildingsCard';
 import MunicipalityCard from './MunicipalityCard';
 import './DataPanel.css';
 
-export default function DataPanel({ state }) {
+export default function DataPanel({ state, onNeighborClick }) {
   const { location, parcel, flood, soil, elevation, buildings, wetlands, status } = state;
   const isLoading = status === 'loading';
 
@@ -26,7 +26,7 @@ export default function DataPanel({ state }) {
       </div>
 
       <div className="data-panel-grid">
-        <ParcelCard data={parcel} isLoading={isLoading && !parcel} />
+        <ParcelCard data={parcel} isLoading={isLoading && !parcel} onNeighborClick={onNeighborClick} />
         <FloodCard data={flood} isLoading={isLoading && !flood} />
         <SoilCard data={soil} isLoading={isLoading && !soil} />
         <TopographyCard data={elevation} isLoading={isLoading && !elevation} />

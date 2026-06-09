@@ -191,6 +191,32 @@
   flex-shrink: 0;
 }
 
+.neighbor-hint {
+  font-weight: 400;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.neighbor-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-accent);
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-family);
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.neighbor-btn:hover {
+  color: var(--color-accent-dark);
+}
+
 /* ─── Soil map units ──────────────────────────────────────────── */
 .soil-unit {
   border: 1px solid var(--color-border);

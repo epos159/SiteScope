@@ -1,7 +1,7 @@
 const express = require('express');
 const axios = require('axios');
 const { COUNTIES } = require('../config/counties');
-const { getBoundingBox, bboxToEsriEnvelope } = require('../utils/geoUtils');
+const { getBoundingBox, bboxToEsriEnvelope, getGeometryCentroid } = require('../utils/geoUtils');
 const {
   buildAddressWhereClause,
   pickBestAddressMatch,
@@ -228,7 +228,7 @@ router.get('/', async (req, res) => {
           outFields: [activeFields.parcelId, activeFields.ownerName, activeFields.ownerName2]
             .filter(Boolean)
             .join(','),
-          returnGeometry: false,
+          returnGeometry: true,
           resultRecordCount: 25,
         });
 
@@ -242,10 +242,16 @@ router.get('/', async (req, res) => {
               seen.add(id);
               return true;
             })
-            .map(f => ({
-              parcelId: f.properties[activeFields.parcelId] || null,
-              ownerName: f.properties[activeFields.ownerName] || 'Unknown Owner',
-            }))
+            .map(f => {
+              const centroid = getGeometryCentroid(f.geometry);
+              return {
+                parcelId: f.properties[activeFields.parcelId] || null,
+                ownerName: f.properties[activeFields.ownerName] || 'Unknown Owner',
+                centroid,
+                geometry: f.geometry || null,
+              };
+            })
+            .filter(n => n.centroid)
             .slice(0, 12);
         }
       } catch (neighborErr) {

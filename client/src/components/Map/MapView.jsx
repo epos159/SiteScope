@@ -90,14 +90,62 @@ function MapController({ parcelFeature, location }) {
   return null;
 }
 
+const NEIGHBOR_STYLE = {
+  color: '#f59e0b',
+  weight: 1.5,
+  fillColor: '#fcd34d',
+  fillOpacity: 0.08,
+  dashArray: '4 4',
+};
+
+const NEIGHBOR_HOVER_STYLE = {
+  color: '#d97706',
+  weight: 2.5,
+  fillColor: '#fcd34d',
+  fillOpacity: 0.25,
+  dashArray: null,
+};
+
+function NeighborLayer({ neighbors, onNeighborClick }) {
+  const map = useMap();
+
+  if (!neighbors?.length) return null;
+
+  return neighbors.map(n => {
+    if (!n.geometry) return null;
+    const geoJSON = { type: 'Feature', geometry: n.geometry, properties: n };
+
+    return (
+      <GeoJSON
+        key={n.parcelId || `${n.centroid?.lat}${n.centroid?.lng}`}
+        data={geoJSON}
+        style={NEIGHBOR_STYLE}
+        onEachFeature={(feature, layer) => {
+          layer.on('mouseover', () => layer.setStyle(NEIGHBOR_HOVER_STYLE));
+          layer.on('mouseout', () => layer.setStyle(NEIGHBOR_STYLE));
+          layer.on('click', () => {
+            const { centroid, ownerName } = feature.properties;
+            if (centroid) onNeighborClick(centroid.lat, centroid.lng, ownerName);
+          });
+          if (n.ownerName) {
+            layer.bindTooltip(n.ownerName, { sticky: true, className: 'neighbor-tooltip' });
+          }
+        }}
+      />
+    );
+  });
+}
+
 // ── Main MapView component ─────────────────────────────────────────
 export default function MapView({
   location,
   parcelFeature,
+  neighborFeatures,
   floodFeatures,
   buildingFeatures,
   wetlandFeatures,
   status,
+  onNeighborClick,
 }) {
   const [layers, setLayers] = useState({
     aerial: true,
@@ -219,6 +267,11 @@ export default function MapView({
             data={wetlandGeoJSON}
             style={wetlandStyle}
           />
+        )}
+
+        {/* ── Neighbor parcels (below main parcel boundary) ── */}
+        {layers.parcel && onNeighborClick && (
+          <NeighborLayer neighbors={neighborFeatures} onNeighborClick={onNeighborClick} />
         )}
 
         {/* ── Parcel boundary (always on top of data layers) ── */}

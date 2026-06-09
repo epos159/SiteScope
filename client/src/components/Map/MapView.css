@@ -141,6 +141,23 @@
   min-width: 0;
 }
 
+/* ─── Neighbor tooltip ────────────────────────────────────────── */
+.neighbor-tooltip {
+  background: var(--color-header);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  padding: 4px 8px;
+  box-shadow: var(--shadow-md);
+  white-space: nowrap;
+}
+
+.neighbor-tooltip::before {
+  border-top-color: var(--color-header) !important;
+}
+
 /* ─── Responsive ──────────────────────────────────────────────── */
 @media (max-width: 640px) {
   .layer-control {

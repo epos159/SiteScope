@@ -32,7 +32,7 @@ export async function getParcels(lat, lng, countyKey, address) {
 export async function getFlood(lat, lng) {
   const { data } = await axios.get(`${BASE}/flood`, {
     params: { lat, lng },
-    timeout: 18000,
+    timeout: 55000,
   });
   return data;
 }
@@ -45,7 +45,7 @@ export async function getFlood(lat, lng) {
 export async function getSoil(lat, lng, geometry) {
   const params = { lat, lng };
   if (geometry) params.geometry = JSON.stringify(geometry);
-  const { data } = await axios.get(`${BASE}/soil`, { params, timeout: 25000 });
+  const { data } = await axios.get(`${BASE}/soil`, { params, timeout: 70000 });
   return data;
 }
 

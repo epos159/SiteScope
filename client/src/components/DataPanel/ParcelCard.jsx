@@ -1,7 +1,7 @@
 import React from 'react';
 import './DataPanel.css';
 
-export default function ParcelCard({ data, isLoading }) {
+export default function ParcelCard({ data, isLoading, onNeighborClick }) {
   const props = data?.feature?.properties;
   const neighbors = data?.neighbors || [];
 
@@ -82,12 +82,25 @@ export default function ParcelCard({ data, isLoading }) {
               <>
                 <p className="card-section-title" style={{ marginTop: 16 }}>
                   Adjoining Landowners
+                  {onNeighborClick && (
+                    <span className="neighbor-hint"> — click to view parcel</span>
+                  )}
                 </p>
                 <ul className="neighbor-list">
                   {neighbors.map((n, i) => (
                     <li key={n.parcelId || i} className="neighbor-item">
                       <span className="neighbor-dot" />
-                      <span>{n.ownerName}</span>
+                      {onNeighborClick && n.centroid ? (
+                        <button
+                          className="neighbor-btn"
+                          onClick={() => onNeighborClick(n.centroid.lat, n.centroid.lng, n.ownerName)}
+                          title={`View parcel for ${n.ownerName}`}
+                        >
+                          {n.ownerName}
+                        </button>
+                      ) : (
+                        <span>{n.ownerName}</span>
+                      )}
                     </li>
                   ))}
                 </ul>

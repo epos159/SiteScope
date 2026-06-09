@@ -7,15 +7,21 @@ import { useSiteData } from './hooks/useSiteData';
 import './App.css';
 
 export default function App() {
-  const { state, search } = useSiteData();
+  const { state, search, searchByCoords } = useSiteData();
   const mapRef = useRef(null);
   const dataPanelRef = useRef(null);
 
   const handleSearch = useCallback(
-    address => {
-      search(address);
-    },
+    address => search(address),
     [search]
+  );
+
+  const handleNeighborClick = useCallback(
+    (lat, lng, ownerLabel) => {
+      const countyKey = state.location?.countyKey;
+      searchByCoords(lat, lng, countyKey, ownerLabel);
+    },
+    [searchByCoords, state.location?.countyKey]
   );
 
   const hasResults = state.status === 'done' || state.status === 'loading';
@@ -58,17 +64,19 @@ export default function App() {
         <MapView
           location={state.location}
           parcelFeature={state.parcel?.feature}
+          neighborFeatures={state.parcel?.neighbors}
           floodFeatures={state.flood?.features}
           buildingFeatures={state.buildings?.features}
           wetlandFeatures={state.wetlands?.features}
           status={state.status}
+          onNeighborClick={handleNeighborClick}
         />
       </div>
 
       {/* ── Data Panel ── */}
       {hasResults && (
         <div className="app-data-section" ref={dataPanelRef} id="data-panel-section">
-          <DataPanel state={state} />
+          <DataPanel state={state} onNeighborClick={handleNeighborClick} />
         </div>
       )}
 
