@@ -1,14 +1,27 @@
 const express = require('express');
 const axios = require('axios');
-const { getBoundingBox, bboxToEsriEnvelope } = require('../utils/geoUtils');
+const { latLngToWebMercator } = require('../utils/geoUtils');
 
 const router = express.Router();
 
 const NWI_ENDPOINT =
   'https://fwspublicservices.wim.usgs.gov/wetlandsmapservice/rest/services/Wetlands/MapServer/0/query';
 
+function normalizeWetlandFeature(feature) {
+  const props = feature.properties || {};
+  return {
+    type: 'Feature',
+    geometry: feature.geometry,
+    properties: {
+      ATTRIBUTE: props['Wetlands.ATTRIBUTE'] || props.ATTRIBUTE || null,
+      WETLAND_TYPE: props['Wetlands.WETLAND_TYPE'] || props.WETLAND_TYPE || null,
+      ACRES: props['Wetlands.ACRES'] ?? props.ACRES ?? null,
+    },
+  };
+}
+
 router.get('/', async (req, res) => {
-  const { lat, lng, geometry } = req.query;
+  const { lat, lng } = req.query;
 
   if (!lat || !lng) {
     return res.status(400).json({ error: 'lat and lng are required' });
@@ -16,37 +29,21 @@ router.get('/', async (req, res) => {
 
   const latF = parseFloat(lat);
   const lngF = parseFloat(lng);
-
-  let envelope;
-  if (geometry) {
-    try {
-      envelope = bboxToEsriEnvelope(getBoundingBox(JSON.parse(geometry)), 0.0002);
-    } catch {
-      envelope = null;
-    }
-  }
-
-  if (!envelope) {
-    const buf = 0.002;
-    envelope = {
-      xmin: lngF - buf,
-      ymin: latF - buf,
-      xmax: lngF + buf,
-      ymax: latF + buf,
-      spatialReference: { wkid: 4326 },
-    };
-  }
+  const merc = latLngToWebMercator(latF, lngF);
 
   try {
+    // NWI service requires Web Mercator (3857) coordinates with a distance buffer
     const response = await axios.get(NWI_ENDPOINT, {
       params: {
-        geometry: JSON.stringify(envelope),
-        geometryType: 'esriGeometryEnvelope',
+        geometry: `${merc.x},${merc.y}`,
+        geometryType: 'esriGeometryPoint',
+        inSR: 3857,
         spatialRel: 'esriSpatialRelIntersects',
-        outFields: 'ATTRIBUTE,WETLAND_TYPE,ACRES',
+        distance: 1500,
+        units: 'esriSRUnit_Meter',
+        outFields: '*',
         returnGeometry: true,
         f: 'geojson',
-        inSR: 4326,
         outSR: 4326,
         resultRecordCount: 50,
       },
@@ -76,18 +73,19 @@ router.get('/', async (req, res) => {
       });
     }
 
+    const features = data.features.map(normalizeWetlandFeature);
     const types = [
-      ...new Set(data.features.map(f => f.properties?.WETLAND_TYPE).filter(Boolean)),
+      ...new Set(features.map(f => f.properties?.WETLAND_TYPE).filter(Boolean)),
     ];
 
-    const totalAcres = data.features.reduce((sum, f) => {
+    const totalAcres = features.reduce((sum, f) => {
       const a = f.properties?.ACRES ? parseFloat(f.properties.ACRES) : 0;
       return sum + (isNaN(a) ? 0 : a);
     }, 0);
 
     return res.json({
-      features: data.features,
-      count: data.features.length,
+      features,
+      count: features.length,
       types,
       totalAcres: parseFloat(totalAcres.toFixed(2)),
       present: true,

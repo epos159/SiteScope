@@ -44,10 +44,9 @@ router.get('/', async (req, res) => {
   const lngF = parseFloat(lng);
 
   try {
-    // Use simple comma-separated format — most compatible with older Esri services
     const response = await axios.get(FEMA_ENDPOINT, {
       params: {
-        geometry: `${lngF},${latF}`,
+        geometry: JSON.stringify({ x: lngF, y: latF }),
         geometryType: 'esriGeometryPoint',
         inSR: 4326,
         spatialRel: 'esriSpatialRelIntersects',

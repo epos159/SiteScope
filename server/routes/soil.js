@@ -33,10 +33,6 @@ function countVertices(geometry) {
   return count;
 }
 
-/**
- * Build candidate WKT areas for soil lookup, ordered simplest-first.
- * SDA rejects complex MultiPolygons and very dense rings.
- */
 function buildSoilAoiCandidates(lat, lng, geometry) {
   const latF = parseFloat(lat);
   const lngF = parseFloat(lng);
@@ -87,16 +83,14 @@ function buildSoilQuery(aoiWkt) {
 
 async function querySoil(aoiWkt) {
   const query = buildSoilQuery(aoiWkt);
-  const body = new URLSearchParams({
-    query,
-    format: 'JSON+COLUMNNAMES',
-  });
-
-  const response = await axios.post(SDM_ENDPOINT, body.toString(), {
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    timeout: 60000,
-  });
-
+  const response = await axios.post(
+    SDM_ENDPOINT,
+    { query, format: 'JSON+COLUMNNAME' },
+    {
+      headers: { 'Content-Type': 'application/json' },
+      timeout: 60000,
+    }
+  );
   return response.data;
 }
 
@@ -117,7 +111,7 @@ function parseSoilTable(table) {
       slopeClass: slopeToClass(obj.slope_r ?? obj.slope_h),
       drainage: obj.drainagecl || null,
       hydrologicGroup: obj.hydgrp || null,
-      hydric: obj.hydricrating === 'Yes' || obj.hydric === 'Yes',
+      hydric: obj.hydricrating === 'Yes',
       taxOrder: obj.taxorder || null,
       taxSubgroup: obj.taxsubgrp || null,
     };
@@ -153,12 +147,13 @@ router.get('/', async (req, res) => {
       }
     } catch (err) {
       lastError = err;
-      console.warn(`[soil] ${candidate.method} failed:`, err.message);
+      const detail = err.response?.data ? JSON.stringify(err.response.data).slice(0, 200) : err.message;
+      console.warn(`[soil] ${candidate.method} failed:`, detail);
     }
   }
 
   if (lastError) {
-    console.error('[soil] all queries failed:', lastError.message);
+    console.error('[soil] all queries failed');
     return res.json({
       error: true,
       message: 'NRCS soil data could not be retrieved. The USDA service may be temporarily unavailable.',

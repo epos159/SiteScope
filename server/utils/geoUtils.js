@@ -113,6 +113,17 @@ function bboxToWkt(bbox, bufferDeg = 0) {
   return `POLYGON((${w} ${s}, ${e} ${s}, ${e} ${n}, ${w} ${n}, ${w} ${s}))`;
 }
 
+/**
+ * Convert WGS84 lat/lng to Web Mercator (EPSG:3857).
+ */
+function latLngToWebMercator(lat, lng) {
+  const x = (lng * 20037508.34) / 180;
+  const y =
+    (Math.log(Math.tan(((90 + lat) * Math.PI) / 360)) / (Math.PI / 180)) *
+    (20037508.34 / 180);
+  return { x, y };
+}
+
 module.exports = {
   geojsonToWkt,
   getBoundingBox,
@@ -120,4 +131,5 @@ module.exports = {
   pointToBufferWkt,
   bboxToEsriEnvelope,
   bboxToWkt,
+  latLngToWebMercator,
 };
