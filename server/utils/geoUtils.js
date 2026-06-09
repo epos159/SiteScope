@@ -102,10 +102,22 @@ function bboxToEsriEnvelope(bbox, bufferDeg = 0) {
   };
 }
 
+/**
+ * Convert a bounding box to a WKT POLYGON (useful for soil AOI queries).
+ */
+function bboxToWkt(bbox, bufferDeg = 0) {
+  const w = bbox.minLng - bufferDeg;
+  const e = bbox.maxLng + bufferDeg;
+  const s = bbox.minLat - bufferDeg;
+  const n = bbox.maxLat + bufferDeg;
+  return `POLYGON((${w} ${s}, ${e} ${s}, ${e} ${n}, ${w} ${n}, ${w} ${s}))`;
+}
+
 module.exports = {
   geojsonToWkt,
   getBoundingBox,
   getGeometryCentroid,
   pointToBufferWkt,
   bboxToEsriEnvelope,
+  bboxToWkt,
 };

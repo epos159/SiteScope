@@ -106,9 +106,24 @@ const NEIGHBOR_HOVER_STYLE = {
   dashArray: null,
 };
 
-function NeighborLayer({ neighbors, onNeighborClick }) {
+function MapClickHandler({ onParcelClick, enabled }) {
   const map = useMap();
 
+  useEffect(() => {
+    if (!enabled || !onParcelClick) return undefined;
+
+    const handleClick = e => {
+      onParcelClick(e.latlng.lat, e.latlng.lng);
+    };
+
+    map.on('click', handleClick);
+    return () => map.off('click', handleClick);
+  }, [map, onParcelClick, enabled]);
+
+  return null;
+}
+
+function NeighborLayer({ neighbors, onNeighborClick }) {
   if (!neighbors?.length) return null;
 
   return neighbors.map(n => {
@@ -123,7 +138,8 @@ function NeighborLayer({ neighbors, onNeighborClick }) {
         onEachFeature={(feature, layer) => {
           layer.on('mouseover', () => layer.setStyle(NEIGHBOR_HOVER_STYLE));
           layer.on('mouseout', () => layer.setStyle(NEIGHBOR_STYLE));
-          layer.on('click', () => {
+          layer.on('click', e => {
+            L.DomEvent.stopPropagation(e);
             const { centroid, ownerName } = feature.properties;
             if (centroid) onNeighborClick(centroid.lat, centroid.lng, ownerName);
           });
@@ -146,6 +162,7 @@ export default function MapView({
   wetlandFeatures,
   status,
   onNeighborClick,
+  onParcelClick,
 }) {
   const [layers, setLayers] = useState({
     aerial: true,
@@ -285,7 +302,14 @@ export default function MapView({
 
         {/* Map controller — handles fly-to on new data */}
         <MapController parcelFeature={parcelFeature} location={location} />
+
+        {/* Click any parcel on the map */}
+        <MapClickHandler onParcelClick={onParcelClick} enabled={!!onParcelClick} />
       </MapContainer>
+
+      {onParcelClick && status !== 'loading' && (
+        <div className="map-click-hint">Click any parcel to load its data</div>
+      )}
 
       {/* Layer control panel */}
       <LayerControl

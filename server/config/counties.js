@@ -15,18 +15,20 @@ const COUNTIES = {
       'https://maps.yorkcounty.gov/arcgis/rest/services/AGOservices/Landrecords_Service/FeatureServer/7/query',
     fields: {
       ownerName: 'ownerName',
-      ownerName2: null,
+      ownerName2: 'ownerCOLine',
       parcelId: 'GPIN',
       acreage: null,
-      acreageDirect: 'legalAcres',
+      acreageDirect: 'GISacres',
+      acreageFallback: 'legalAcres',
       municipality: 'magesterialDistrict',
       siteAddress: 'ADDRESS',
     },
     acreageFromShapeArea: false,
     addressSearch: {
       siteAddress: 'ADDRESS',
-      streetNumber: 'VIS_streetNumber',
-      streetName: 'VIS_streetName',
+      streetNumber: 'STRTNUMB',
+      streetName: 'STNAME',
+      alternateStreetName: 'WHOLE_STNAME',
     },
     // Fallback if the primary county endpoint is unavailable
     fallbackEndpoint:

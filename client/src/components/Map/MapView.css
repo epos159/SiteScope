@@ -141,6 +141,24 @@
   min-width: 0;
 }
 
+/* ─── Click hint ──────────────────────────────────────────────── */
+.map-click-hint {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(26, 41, 64, 0.88);
+  color: #fff;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  padding: 6px 14px;
+  border-radius: 999px;
+  pointer-events: none;
+  z-index: 1000;
+  white-space: nowrap;
+  box-shadow: var(--shadow-md);
+}
+
 /* ─── Neighbor tooltip ────────────────────────────────────────── */
 .neighbor-tooltip {
   background: var(--color-header);

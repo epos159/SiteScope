@@ -14,10 +14,13 @@ router.get('/', async (req, res) => {
     return res.status(400).json({ error: 'lat and lng are required' });
   }
 
+  const latF = parseFloat(lat);
+  const lngF = parseFloat(lng);
+
   let envelope;
   if (geometry) {
     try {
-      envelope = bboxToEsriEnvelope(getBoundingBox(JSON.parse(geometry)));
+      envelope = bboxToEsriEnvelope(getBoundingBox(JSON.parse(geometry)), 0.0002);
     } catch {
       envelope = null;
     }
@@ -25,11 +28,11 @@ router.get('/', async (req, res) => {
 
   if (!envelope) {
     const buf = 0.002;
-    const latF = parseFloat(lat);
-    const lngF = parseFloat(lng);
     envelope = {
-      xmin: lngF - buf, ymin: latF - buf,
-      xmax: lngF + buf, ymax: latF + buf,
+      xmin: lngF - buf,
+      ymin: latF - buf,
+      xmax: lngF + buf,
+      ymax: latF + buf,
       spatialReference: { wkid: 4326 },
     };
   }
@@ -40,20 +43,37 @@ router.get('/', async (req, res) => {
         geometry: JSON.stringify(envelope),
         geometryType: 'esriGeometryEnvelope',
         spatialRel: 'esriSpatialRelIntersects',
-        outFields: 'ATTRIBUTE,WETLAND_TYPE,ACRES,Shape_Area',
+        outFields: 'ATTRIBUTE,WETLAND_TYPE,ACRES',
         returnGeometry: true,
         f: 'geojson',
         inSR: 4326,
         outSR: 4326,
         resultRecordCount: 50,
       },
-      timeout: 15000,
+      timeout: 25000,
     });
 
     const data = response.data;
 
+    if (data.error) {
+      console.error('[wetlands] API error:', data.error);
+      return res.json({
+        error: true,
+        message: 'Wetlands service returned an error.',
+        features: [],
+        count: 0,
+        types: [],
+      });
+    }
+
     if (!data.features || data.features.length === 0) {
-      return res.json({ features: [], count: 0, types: [], present: false });
+      return res.json({
+        features: [],
+        count: 0,
+        types: [],
+        present: false,
+        source: 'National Wetlands Inventory',
+      });
     }
 
     const types = [
@@ -71,6 +91,7 @@ router.get('/', async (req, res) => {
       types,
       totalAcres: parseFloat(totalAcres.toFixed(2)),
       present: true,
+      source: 'National Wetlands Inventory',
     });
   } catch (err) {
     console.error('[wetlands] error:', err.message);

@@ -23,6 +23,8 @@ function normalizeParcelProps(props, county, fields) {
   let acreage = null;
   if (fields.acreageDirect && props[fields.acreageDirect] != null) {
     acreage = parseFloat(props[fields.acreageDirect]).toFixed(2);
+  } else if (fields.acreageFallback && props[fields.acreageFallback] != null) {
+    acreage = parseFloat(props[fields.acreageFallback]).toFixed(2);
   } else if (county.acreageFromShapeArea && fields.acreage && props[fields.acreage] != null) {
     acreage = (parseFloat(props[fields.acreage]) / 43560).toFixed(2);
   }
@@ -87,6 +89,7 @@ async function fetchParcelByAddress(searchAddress, county, endpoint, fields, add
 
 async function resolveParcel(lat, lng, countyKey, searchAddress) {
   const county = COUNTIES[countyKey];
+  // Address search uses county official data only — no PASDA fallback for address matching
   const attempts = [
     {
       endpoint: county.parcelEndpoint,
@@ -95,15 +98,6 @@ async function resolveParcel(lat, lng, countyKey, searchAddress) {
       countyConfig: county,
     },
   ];
-
-  if (county.fallbackEndpoint && county.fallbackFields) {
-    attempts.push({
-      endpoint: county.fallbackEndpoint,
-      fields: county.fallbackFields,
-      addressSearch: county.fallbackAddressSearch || { siteAddress: county.fallbackFields.siteAddress },
-      countyConfig: { ...county, acreageFromShapeArea: true },
-    });
-  }
 
   let addressMatch = null;
   let addressEndpoint = null;

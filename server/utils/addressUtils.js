@@ -56,11 +56,21 @@ function buildAddressWhereClause(searchAddress, addressSearch) {
   }
 
   const tokens = parsed.streetName.split(/\s+/).filter(t => t.length > 1);
-  const searchField = addressSearch.streetName || addressSearch.siteAddress;
-  if (!searchField || tokens.length === 0) return null;
+  const searchFields = [
+    addressSearch.streetName,
+    addressSearch.alternateStreetName,
+    addressSearch.siteAddress,
+  ].filter(Boolean);
 
-  for (const token of tokens.slice(0, 4)) {
-    clauses.push(`UPPER(${searchField}) LIKE '%${escapeArcGIS(token)}%'`);
+  if (searchFields.length === 0 || tokens.length === 0) return null;
+
+  for (const token of tokens.slice(0, 3)) {
+    const streetClauses = searchFields.map(
+      field => `UPPER(${field}) LIKE '%${escapeArcGIS(token)}%'`
+    );
+    clauses.push(
+      streetClauses.length === 1 ? streetClauses[0] : `(${streetClauses.join(' OR ')})`
+    );
   }
 
   return clauses.join(' AND ');

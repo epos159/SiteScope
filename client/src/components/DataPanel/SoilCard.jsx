@@ -20,11 +20,26 @@ export default function SoilCard({ data, isLoading }) {
         )}
 
         {!isLoading && data?.error && (
-          <p className="data-card-unavailable">Data not available for this location.</p>
+          <>
+            <p className="data-card-unavailable">
+              {data.message || 'Data not available for this location.'}
+            </p>
+            <p className="data-card-source">
+              <a
+                href="https://websoilsurvey.nrcs.usda.gov/app/WebSoilSurvey.aspx"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Open Web Soil Survey →
+              </a>
+            </p>
+          </>
         )}
 
         {!isLoading && !data?.error && units.length === 0 && (
-          <p className="data-card-unavailable">No soil map units found for this area.</p>
+          <p className="data-card-unavailable">
+            {data.message || 'No soil map units found for this area.'}
+          </p>
         )}
 
         {!isLoading && units.length > 0 && (
@@ -84,6 +99,10 @@ export default function SoilCard({ data, isLoading }) {
                 )}
               </div>
             ))}
+
+            {data.source && (
+              <p className="data-card-source">Source: {data.source}</p>
+            )}
           </>
         )}
       </div>

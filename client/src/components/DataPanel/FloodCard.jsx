@@ -19,7 +19,18 @@ export default function FloodCard({ data, isLoading }) {
         )}
 
         {!isLoading && data?.error && (
-          <p className="data-card-unavailable">Data not available for this location.</p>
+          <>
+            <p className="data-card-unavailable">
+              {data.message || 'Data not available for this location.'}
+            </p>
+            {data.femaMapLink && (
+              <p className="data-card-source">
+                <a href={data.femaMapLink} target="_blank" rel="noopener noreferrer">
+                  Check FEMA map directly →
+                </a>
+              </p>
+            )}
+          </>
         )}
 
         {!isLoading && data && !data.error && (
@@ -83,6 +94,10 @@ export default function FloodCard({ data, isLoading }) {
                   </a>
                 </span>
               </div>
+            )}
+
+            {data.source && (
+              <p className="data-card-source">Source: {data.source}</p>
             )}
           </>
         )}

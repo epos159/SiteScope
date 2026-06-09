@@ -102,6 +102,13 @@
   padding: 4px 0;
 }
 
+.data-card-source {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  margin-top: 10px;
+  line-height: 1.4;
+}
+
 .parcel-match-note {
   font-size: var(--font-size-sm);
   color: var(--color-info);

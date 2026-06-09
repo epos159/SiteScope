@@ -78,6 +78,10 @@ export default function ParcelCard({ data, isLoading, onNeighborClick }) {
               </div>
             )}
 
+            {props.county && (
+              <p className="data-card-source">Source: {props.county} Assessor GIS</p>
+            )}
+
             {neighbors.length > 0 && (
               <>
                 <p className="card-section-title" style={{ marginTop: 16 }}>

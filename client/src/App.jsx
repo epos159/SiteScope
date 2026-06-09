@@ -16,10 +16,11 @@ export default function App() {
     [search]
   );
 
-  const handleNeighborClick = useCallback(
+  const handleParcelClick = useCallback(
     (lat, lng, ownerLabel) => {
       const countyKey = state.location?.countyKey;
-      searchByCoords(lat, lng, countyKey, ownerLabel);
+      if (!countyKey) return;
+      searchByCoords(lat, lng, countyKey, ownerLabel || 'Selected parcel');
     },
     [searchByCoords, state.location?.countyKey]
   );
@@ -69,14 +70,15 @@ export default function App() {
           buildingFeatures={state.buildings?.features}
           wetlandFeatures={state.wetlands?.features}
           status={state.status}
-          onNeighborClick={handleNeighborClick}
+          onNeighborClick={handleParcelClick}
+          onParcelClick={handleParcelClick}
         />
       </div>
 
       {/* ── Data Panel ── */}
       {hasResults && (
         <div className="app-data-section" ref={dataPanelRef} id="data-panel-section">
-          <DataPanel state={state} onNeighborClick={handleNeighborClick} />
+          <DataPanel state={state} onNeighborClick={handleParcelClick} />
         </div>
       )}
 

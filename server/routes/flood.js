@@ -4,7 +4,7 @@ const axios = require('axios');
 const router = express.Router();
 
 const FEMA_ENDPOINT =
-  'https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer/28/query';
+  'https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/28/query';
 
 const ZONE_DESCRIPTIONS = {
   A:   '1% Annual Chance Flood (No BFE Determined)',
@@ -103,6 +103,7 @@ router.get('/', async (req, res) => {
       description: ZONE_DESCRIPTIONS[zone] || `Flood Zone ${zone}`,
       femaMapLink,
       features: geojsonFeatures,
+      source: 'FEMA National Flood Hazard Layer',
     });
   } catch (err) {
     console.error('[flood] error:', err.message);
