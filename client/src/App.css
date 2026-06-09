@@ -68,8 +68,8 @@
 
 /* ─── Map Section ─────────────────────────────────────────────── */
 .app-map-section {
-  height: 55vh;
-  min-height: 320px;
+  height: 70vh;
+  min-height: 420px;
   flex-shrink: 0;
   position: relative;
 }
@@ -149,6 +149,7 @@
   }
 
   .app-map-section {
-    height: 45vh;
+    height: 55vh;
+    min-height: 280px;
   }
 }
