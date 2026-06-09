@@ -52,6 +52,32 @@ function getBoundingBox(geometry) {
 }
 
 /**
+ * Approximate centroid of a GeoJSON Polygon or MultiPolygon.
+ */
+function getGeometryCentroid(geometry) {
+  if (!geometry) return null;
+
+  let ring;
+  if (geometry.type === 'Polygon') {
+    ring = geometry.coordinates[0];
+  } else if (geometry.type === 'MultiPolygon') {
+    ring = geometry.coordinates[0][0];
+  } else {
+    return null;
+  }
+
+  const points = ring.length > 1 ? ring.slice(0, -1) : ring;
+  let lat = 0;
+  let lng = 0;
+  for (const [lngVal, latVal] of points) {
+    lng += lngVal;
+    lat += latVal;
+  }
+
+  return { lat: lat / points.length, lng: lng / points.length };
+}
+
+/**
  * Create a rectangular WKT POLYGON around a lat/lng point.
  * bufferDeg: degrees of buffer (0.002 ≈ ~200m)
  */
@@ -76,4 +102,10 @@ function bboxToEsriEnvelope(bbox, bufferDeg = 0) {
   };
 }
 
-module.exports = { geojsonToWkt, getBoundingBox, pointToBufferWkt, bboxToEsriEnvelope };
+module.exports = {
+  geojsonToWkt,
+  getBoundingBox,
+  getGeometryCentroid,
+  pointToBufferWkt,
+  bboxToEsriEnvelope,
+};

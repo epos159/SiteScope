@@ -2,6 +2,11 @@ const express = require('express');
 const axios = require('axios');
 const { COUNTIES } = require('../config/counties');
 const { getBoundingBox, bboxToEsriEnvelope } = require('../utils/geoUtils');
+const {
+  buildAddressWhereClause,
+  pickBestAddressMatch,
+  scoreAddressMatch,
+} = require('../utils/addressUtils');
 
 const router = express.Router();
 const TIMEOUT = 25000;
@@ -39,6 +44,15 @@ function normalizeParcelProps(props, county, fields) {
   };
 }
 
+function toFeature(rawFeature, county, fields) {
+  const props = rawFeature.properties || {};
+  return {
+    type: 'Feature',
+    geometry: rawFeature.geometry,
+    properties: normalizeParcelProps(props, county, fields),
+  };
+}
+
 async function fetchParcelFeature(lat, lng, county, endpoint, fields) {
   const data = await queryArcGIS(endpoint, {
     geometry: JSON.stringify({ x: parseFloat(lng), y: parseFloat(lat) }),
@@ -49,19 +63,130 @@ async function fetchParcelFeature(lat, lng, county, endpoint, fields) {
   });
 
   if (!data.features?.length) return null;
+  return toFeature(data.features[0], county, fields);
+}
 
-  const feature = data.features[0];
-  const normalized = normalizeParcelProps(feature.properties || {}, county, fields);
+async function fetchParcelByAddress(searchAddress, county, endpoint, fields, addressSearch) {
+  const where = buildAddressWhereClause(searchAddress, addressSearch);
+  if (!where) return null;
 
-  return {
-    type: 'Feature',
-    geometry: feature.geometry,
-    properties: normalized,
-  };
+  const data = await queryArcGIS(endpoint, {
+    where,
+    outFields: '*',
+    returnGeometry: true,
+    resultRecordCount: 25,
+  });
+
+  if (!data.features?.length) return null;
+
+  const best = pickBestAddressMatch(searchAddress, data.features, fields.siteAddress);
+  if (!best) return null;
+
+  return toFeature(best, county, fields);
+}
+
+async function resolveParcel(lat, lng, countyKey, searchAddress) {
+  const county = COUNTIES[countyKey];
+  const attempts = [
+    {
+      endpoint: county.parcelEndpoint,
+      fields: county.fields,
+      addressSearch: county.addressSearch,
+      countyConfig: county,
+    },
+  ];
+
+  if (county.fallbackEndpoint && county.fallbackFields) {
+    attempts.push({
+      endpoint: county.fallbackEndpoint,
+      fields: county.fallbackFields,
+      addressSearch: county.fallbackAddressSearch || { siteAddress: county.fallbackFields.siteAddress },
+      countyConfig: { ...county, acreageFromShapeArea: true },
+    });
+  }
+
+  let addressMatch = null;
+  let addressEndpoint = null;
+  let addressFields = null;
+
+  if (searchAddress) {
+    for (const attempt of attempts) {
+      if (!attempt.addressSearch) continue;
+      try {
+        const feature = await fetchParcelByAddress(
+          searchAddress,
+          attempt.countyConfig,
+          attempt.endpoint,
+          attempt.fields,
+          attempt.addressSearch
+        );
+        if (feature) {
+          addressMatch = feature;
+          addressEndpoint = attempt.endpoint;
+          addressFields = attempt.fields;
+          break;
+        }
+      } catch (err) {
+        console.warn('[parcels] address search failed:', err.message);
+      }
+    }
+  }
+
+  let pointMatch = null;
+  let pointEndpoint = county.parcelEndpoint;
+  let pointFields = county.fields;
+
+  try {
+    pointMatch = await fetchParcelFeature(lat, lng, county, county.parcelEndpoint, county.fields);
+  } catch (err) {
+    console.warn('[parcels] point query failed:', err.message);
+  }
+
+  if (!pointMatch && county.fallbackEndpoint && county.fallbackFields) {
+    try {
+      pointMatch = await fetchParcelFeature(
+        lat,
+        lng,
+        { ...county, acreageFromShapeArea: true },
+        county.fallbackEndpoint,
+        county.fallbackFields
+      );
+      pointEndpoint = county.fallbackEndpoint;
+      pointFields = county.fallbackFields;
+    } catch (err) {
+      console.warn('[parcels] fallback point query failed:', err.message);
+    }
+  }
+
+  if (addressMatch) {
+    const pointAddress = pointMatch?.properties?.siteAddress;
+    const addressScore = scoreAddressMatch(searchAddress, addressMatch.properties.siteAddress);
+    const pointScore = pointAddress ? scoreAddressMatch(searchAddress, pointAddress) : 0;
+
+    return {
+      feature: addressMatch,
+      activeEndpoint: addressEndpoint,
+      activeFields: addressFields,
+      matchMethod: 'address',
+      geocodeMismatch: pointMatch && pointScore < addressScore,
+    };
+  }
+
+  if (pointMatch) {
+    return {
+      feature: pointMatch,
+      activeEndpoint: pointEndpoint,
+      activeFields: pointFields,
+      matchMethod: 'point',
+      geocodeMismatch: false,
+    };
+  }
+
+  return null;
 }
 
 router.get('/', async (req, res) => {
-  const { lat, lng, countyKey } = req.query;
+  const { lat, lng, countyKey, address } = req.query;
 
   if (!lat || !lng) {
     return res.status(400).json({ error: 'lat and lng are required' });
@@ -76,37 +201,10 @@ router.get('/', async (req, res) => {
     });
   }
 
-  const county = COUNTIES[countyKey];
-  const { parcelEndpoint, fields } = county;
-
   try {
-    let feature = null;
-    let activeEndpoint = parcelEndpoint;
-    let activeFields = fields;
+    const resolved = await resolveParcel(lat, lng, countyKey, address);
 
-    try {
-      feature = await fetchParcelFeature(lat, lng, county, parcelEndpoint, fields);
-    } catch (primaryErr) {
-      console.warn('[parcels] primary endpoint failed:', primaryErr.message);
-    }
-
-    if (!feature && county.fallbackEndpoint && county.fallbackFields) {
-      try {
-        feature = await fetchParcelFeature(
-          lat,
-          lng,
-          { ...county, acreageFromShapeArea: true },
-          county.fallbackEndpoint,
-          county.fallbackFields
-        );
-        activeEndpoint = county.fallbackEndpoint;
-        activeFields = county.fallbackFields;
-      } catch (fallbackErr) {
-        console.warn('[parcels] fallback endpoint failed:', fallbackErr.message);
-      }
-    }
-
-    if (!feature) {
+    if (!resolved) {
       return res.json({
         supported: true,
         feature: null,
@@ -115,9 +213,9 @@ router.get('/', async (req, res) => {
       });
     }
 
+    const { feature, activeEndpoint, activeFields, matchMethod, geocodeMismatch } = resolved;
     const normalized = feature.properties;
 
-    // Fetch neighboring parcels using parcel bounding box
     let neighbors = [];
     if (feature.geometry) {
       try {
@@ -159,6 +257,8 @@ router.get('/', async (req, res) => {
       supported: true,
       feature,
       neighbors,
+      matchMethod,
+      geocodeMismatch,
     });
   } catch (err) {
     console.error('[parcels] error:', err.message);

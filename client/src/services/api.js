@@ -18,11 +18,10 @@ export async function geocode(address) {
  * Fetch parcel data for a geocoded point.
  * Returns { supported, feature, neighbors, message?, error? }
  */
-export async function getParcels(lat, lng, countyKey) {
-  const { data } = await axios.get(`${BASE}/parcels`, {
-    params: { lat, lng, countyKey },
-    timeout: 18000,
-  });
+export async function getParcels(lat, lng, countyKey, address) {
+  const params = { lat, lng, countyKey };
+  if (address) params.address = address;
+  const { data } = await axios.get(`${BASE}/parcels`, { params, timeout: 18000 });
   return data;
 }
 

@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import * as api from '../services/api';
+import { getFeatureCentroid } from '../utils/geo';
 
 const initialState = {
   status: 'idle', // 'idle' | 'loading' | 'done' | 'error'
@@ -41,11 +42,12 @@ export function useSiteData() {
     }
 
     const { lat, lng, countyKey } = location;
+    const searchedAddress = location.searchedAddress || address.trim();
 
     // ── Step 2: Parcel (serial — geometry used downstream) ───
     let parcel = null;
     try {
-      parcel = await api.getParcels(lat, lng, countyKey);
+      parcel = await api.getParcels(lat, lng, countyKey, searchedAddress);
       setState(prev => ({ ...prev, parcel }));
     } catch {
       parcel = { error: true, message: 'Parcel data unavailable.' };
@@ -53,15 +55,18 @@ export function useSiteData() {
     }
 
     const geometry = parcel?.feature?.geometry ?? null;
+    const centroid = getFeatureCentroid(geometry);
+    const queryLat = centroid?.lat ?? lat;
+    const queryLng = centroid?.lng ?? lng;
 
     // ── Step 3: All remaining data in parallel ───────────────
     const [floodResult, soilResult, buildingsResult, elevationResult, wetlandsResult] =
       await Promise.allSettled([
-        api.getFlood(lat, lng),
-        api.getSoil(lat, lng, geometry),
-        api.getBuildings(lat, lng, geometry),
-        api.getElevation(lat, lng, geometry),
-        api.getWetlands(lat, lng, geometry),
+        api.getFlood(queryLat, queryLng),
+        api.getSoil(queryLat, queryLng, geometry),
+        api.getBuildings(queryLat, queryLng, geometry),
+        api.getElevation(queryLat, queryLng, geometry),
+        api.getWetlands(queryLat, queryLng, geometry),
       ]);
 
     const resolve = result =>

@@ -27,6 +27,12 @@ export default function ParcelCard({ data, isLoading }) {
           <p className="data-card-unavailable">Data not available for this location.</p>
         )}
 
+        {!isLoading && data?.geocodeMismatch && props?.siteAddress && (
+          <p className="parcel-match-note">
+            Matched parcel by county address records: <strong>{props.siteAddress}</strong>
+          </p>
+        )}
+
         {!isLoading && props && (
           <>
             <div className="field-row">
