@@ -56,7 +56,7 @@ router.get('/', async (req, res) => {
       { query, format: 'JSON+COLUMNNAMES' },
       {
         headers: { 'Content-Type': 'application/json' },
-        timeout: 20000,
+        timeout: 45000,
       }
     );
 

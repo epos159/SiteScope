@@ -38,7 +38,7 @@ router.get('/', async (req, res) => {
         inSR: 4326,
         outSR: 4326,
       },
-      timeout: 15000,
+      timeout: 30000,
     });
 
     const data = response.data;

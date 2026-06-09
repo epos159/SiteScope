@@ -4,7 +4,7 @@ const { COUNTIES } = require('../config/counties');
 const { getBoundingBox, bboxToEsriEnvelope } = require('../utils/geoUtils');
 
 const router = express.Router();
-const TIMEOUT = 15000;
+const TIMEOUT = 25000;
 
 async function queryArcGIS(endpoint, params) {
   const response = await axios.get(endpoint, {
@@ -12,6 +12,52 @@ async function queryArcGIS(endpoint, params) {
     timeout: TIMEOUT,
   });
   return response.data;
+}
+
+function normalizeParcelProps(props, county, fields) {
+  let acreage = null;
+  if (fields.acreageDirect && props[fields.acreageDirect] != null) {
+    acreage = parseFloat(props[fields.acreageDirect]).toFixed(2);
+  } else if (county.acreageFromShapeArea && fields.acreage && props[fields.acreage] != null) {
+    acreage = (parseFloat(props[fields.acreage]) / 43560).toFixed(2);
+  }
+
+  let municipality = props[fields.municipality] || null;
+  if (!municipality && fields.districtField && county.districtLookup) {
+    const code = String(props[fields.districtField] || '').padStart(2, '0');
+    municipality = county.districtLookup[code] || null;
+  }
+
+  return {
+    ownerName: props[fields.ownerName] || null,
+    ownerName2: fields.ownerName2 ? props[fields.ownerName2] || null : null,
+    parcelId: props[fields.parcelId] || null,
+    acreage,
+    municipality,
+    county: county.name,
+    siteAddress: props[fields.siteAddress] || null,
+  };
+}
+
+async function fetchParcelFeature(lat, lng, county, endpoint, fields) {
+  const data = await queryArcGIS(endpoint, {
+    geometry: JSON.stringify({ x: parseFloat(lng), y: parseFloat(lat) }),
+    geometryType: 'esriGeometryPoint',
+    spatialRel: 'esriSpatialRelIntersects',
+    outFields: '*',
+    returnGeometry: true,
+  });
+
+  if (!data.features?.length) return null;
+
+  const feature = data.features[0];
+  const normalized = normalizeParcelProps(feature.properties || {}, county, fields);
+
+  return {
+    type: 'Feature',
+    geometry: feature.geometry,
+    properties: normalized,
+  };
 }
 
 router.get('/', async (req, res) => {
@@ -31,19 +77,36 @@ router.get('/', async (req, res) => {
   }
 
   const county = COUNTIES[countyKey];
-  const { parcelEndpoint, fields, acreageFromShapeArea } = county;
+  const { parcelEndpoint, fields } = county;
 
   try {
-    // Spatial intersect on the geocoded point
-    const data = await queryArcGIS(parcelEndpoint, {
-      geometry: JSON.stringify({ x: parseFloat(lng), y: parseFloat(lat) }),
-      geometryType: 'esriGeometryPoint',
-      spatialRel: 'esriSpatialRelIntersects',
-      outFields: '*',
-      returnGeometry: true,
-    });
+    let feature = null;
+    let activeEndpoint = parcelEndpoint;
+    let activeFields = fields;
 
-    if (!data.features || data.features.length === 0) {
+    try {
+      feature = await fetchParcelFeature(lat, lng, county, parcelEndpoint, fields);
+    } catch (primaryErr) {
+      console.warn('[parcels] primary endpoint failed:', primaryErr.message);
+    }
+
+    if (!feature && county.fallbackEndpoint && county.fallbackFields) {
+      try {
+        feature = await fetchParcelFeature(
+          lat,
+          lng,
+          { ...county, acreageFromShapeArea: true },
+          county.fallbackEndpoint,
+          county.fallbackFields
+        );
+        activeEndpoint = county.fallbackEndpoint;
+        activeFields = county.fallbackFields;
+      } catch (fallbackErr) {
+        console.warn('[parcels] fallback endpoint failed:', fallbackErr.message);
+      }
+    }
+
+    if (!feature) {
       return res.json({
         supported: true,
         feature: null,
@@ -52,26 +115,7 @@ router.get('/', async (req, res) => {
       });
     }
 
-    const feature = data.features[0];
-    const props = feature.properties || {};
-
-    // Normalize acreage
-    let acreage = null;
-    if (fields.acreageDirect && props[fields.acreageDirect] != null) {
-      acreage = parseFloat(props[fields.acreageDirect]).toFixed(2);
-    } else if (acreageFromShapeArea && props[fields.acreage] != null) {
-      acreage = (parseFloat(props[fields.acreage]) / 43560).toFixed(2);
-    }
-
-    const normalized = {
-      ownerName: props[fields.ownerName] || null,
-      ownerName2: props[fields.ownerName2] || null,
-      parcelId: props[fields.parcelId] || null,
-      acreage,
-      municipality: props[fields.municipality] || null,
-      county: county.name,
-      siteAddress: props[fields.siteAddress] || null,
-    };
+    const normalized = feature.properties;
 
     // Fetch neighboring parcels using parcel bounding box
     let neighbors = [];
@@ -79,11 +123,13 @@ router.get('/', async (req, res) => {
       try {
         const bbox = getBoundingBox(feature.geometry);
         const envelope = bboxToEsriEnvelope(bbox, 0.0005);
-        const neighborData = await queryArcGIS(parcelEndpoint, {
+        const neighborData = await queryArcGIS(activeEndpoint, {
           geometry: JSON.stringify(envelope),
           geometryType: 'esriGeometryEnvelope',
           spatialRel: 'esriSpatialRelIntersects',
-          outFields: [fields.parcelId, fields.ownerName, fields.ownerName2].filter(Boolean).join(','),
+          outFields: [activeFields.parcelId, activeFields.ownerName, activeFields.ownerName2]
+            .filter(Boolean)
+            .join(','),
           returnGeometry: false,
           resultRecordCount: 25,
         });
@@ -93,14 +139,14 @@ router.get('/', async (req, res) => {
           const seen = new Set([mainId]);
           neighbors = neighborData.features
             .filter(f => {
-              const id = f.properties?.[fields.parcelId];
+              const id = f.properties?.[activeFields.parcelId];
               if (!id || seen.has(id)) return false;
               seen.add(id);
               return true;
             })
             .map(f => ({
-              parcelId: f.properties[fields.parcelId] || null,
-              ownerName: f.properties[fields.ownerName] || 'Unknown Owner',
+              parcelId: f.properties[activeFields.parcelId] || null,
+              ownerName: f.properties[activeFields.ownerName] || 'Unknown Owner',
             }))
             .slice(0, 12);
         }
@@ -111,11 +157,7 @@ router.get('/', async (req, res) => {
 
     return res.json({
       supported: true,
-      feature: {
-        type: 'Feature',
-        geometry: feature.geometry,
-        properties: normalized,
-      },
+      feature,
       neighbors,
     });
   } catch (err) {
