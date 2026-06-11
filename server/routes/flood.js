@@ -6,6 +6,9 @@ const router = express.Router();
 const FEMA_ENDPOINT =
   'https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/28/query';
 
+// FIRM_PAN and PANEL_TYP are not valid on layer 28 — requesting them causes a 400.
+const FEMA_OUT_FIELDS = 'FLD_ZONE,ZONE_SUBTY,SFHA_TF,STATIC_BFE,LEN_UNIT';
+
 const ZONE_DESCRIPTIONS = {
   A:   '1% Annual Chance Flood (No BFE Determined)',
   AE:  '1% Annual Chance Flood with Base Flood Elevations',
@@ -19,9 +22,17 @@ const ZONE_DESCRIPTIONS = {
   D:   'Possible Flood Hazard — Undetermined',
 };
 
+function femaMapLink(lat, lng) {
+  return `https://msc.fema.gov/portal/search?AddressQuery=${encodeURIComponent(`${lat},${lng}`)}`;
+}
+
+function normalizeBfe(value) {
+  if (value == null || value === '' || Number(value) === -9999) return null;
+  return value;
+}
+
 /**
  * Convert Esri JSON feature to a GeoJSON-compatible feature.
- * FEMA returns rings in [ [x, y], ... ] format (already WGS84 if outSR=4326).
  */
 function esriToGeoJSON(feature) {
   const rings = feature.geometry?.rings;
@@ -33,6 +44,23 @@ function esriToGeoJSON(feature) {
   };
 }
 
+async function queryFema(lat, lng, returnGeometry) {
+  const response = await axios.get(FEMA_ENDPOINT, {
+    params: {
+      geometry: JSON.stringify({ x: lng, y: lat }),
+      geometryType: 'esriGeometryPoint',
+      inSR: 4326,
+      spatialRel: 'esriSpatialRelIntersects',
+      outFields: FEMA_OUT_FIELDS,
+      returnGeometry,
+      outSR: 4326,
+      f: 'json',
+    },
+    timeout: 45000,
+  });
+  return response.data;
+}
+
 router.get('/', async (req, res) => {
   const { lat, lng } = req.query;
 
@@ -42,23 +70,15 @@ router.get('/', async (req, res) => {
 
   const latF = parseFloat(lat);
   const lngF = parseFloat(lng);
+  const mapLink = femaMapLink(latF, lngF);
 
   try {
-    const response = await axios.get(FEMA_ENDPOINT, {
-      params: {
-        geometry: JSON.stringify({ x: lngF, y: latF }),
-        geometryType: 'esriGeometryPoint',
-        inSR: 4326,
-        spatialRel: 'esriSpatialRelIntersects',
-        outFields: 'FLD_ZONE,ZONE_SUBTY,SFHA_TF,STATIC_BFE,LEN_UNIT,FIRM_PAN,PANEL_TYP',
-        returnGeometry: true,
-        outSR: 4326,
-        f: 'json',
-      },
-      timeout: 45000,
-    });
+    let data = await queryFema(latF, lngF, true);
 
-    const data = response.data;
+    if (data.error) {
+      console.warn('[flood] geometry query failed, retrying without geometry:', data.error.message);
+      data = await queryFema(latF, lngF, false);
+    }
 
     if (data.error) {
       console.error('[flood] API error:', data.error);
@@ -67,6 +87,7 @@ router.get('/', async (req, res) => {
         message: `FEMA API error: ${data.error.message || 'Unknown error'}`,
         zone: null,
         features: [],
+        femaMapLink: mapLink,
       });
     }
 
@@ -76,8 +97,9 @@ router.get('/', async (req, res) => {
         description: 'Area of Minimal Flood Hazard — No FEMA flood hazard features found at this point.',
         sfha: false,
         firmPanel: null,
-        femaMapLink: `https://msc.fema.gov/portal/search?AddressQuery=${encodeURIComponent(`${latF},${lngF}`)}`,
+        femaMapLink: mapLink,
         features: [],
+        source: 'FEMA National Flood Hazard Layer',
       });
     }
 
@@ -85,22 +107,18 @@ router.get('/', async (req, res) => {
     const zone = attrs.FLD_ZONE || 'Unknown';
     const sfha = attrs.SFHA_TF === 'T' || attrs.SFHA_TF === true;
 
-    const femaMapLink = `https://msc.fema.gov/portal/search?AddressQuery=${encodeURIComponent(`${latF},${lngF}`)}`;
-
-    const geojsonFeatures = data.features
-      .map(esriToGeoJSON)
-      .filter(Boolean);
+    const geojsonFeatures = data.features.map(esriToGeoJSON).filter(Boolean);
 
     return res.json({
       zone,
       zoneSubtype: attrs.ZONE_SUBTY || null,
       sfha,
-      staticBfe: attrs.STATIC_BFE || null,
-      lenUnit: attrs.LEN_UNIT || null,
-      firmPanel: attrs.FIRM_PAN || null,
-      panelType: attrs.PANEL_TYP || null,
-      description: ZONE_DESCRIPTIONS[zone] || `Flood Zone ${zone}`,
-      femaMapLink,
+      staticBfe: normalizeBfe(attrs.STATIC_BFE),
+      lenUnit: attrs.LEN_UNIT || 'ft',
+      firmPanel: null,
+      panelType: null,
+      description: ZONE_DESCRIPTIONS[zone] || attrs.ZONE_SUBTY || `Flood Zone ${zone}`,
+      femaMapLink: mapLink,
       features: geojsonFeatures,
       source: 'FEMA National Flood Hazard Layer',
     });
@@ -111,6 +129,7 @@ router.get('/', async (req, res) => {
       message: 'FEMA flood zone data could not be retrieved. The FEMA service may be temporarily unavailable.',
       zone: null,
       features: [],
+      femaMapLink: mapLink,
     });
   }
 });
