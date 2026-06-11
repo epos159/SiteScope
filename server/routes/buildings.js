@@ -1,19 +1,26 @@
 const express = require('express');
 const axios = require('axios');
-const { getBoundingBox, latLngToWebMercator } = require('../utils/geoUtils');
+const {
+  getBoundingBox,
+  latLngToWebMercator,
+  getGeometryCentroid,
+  pointInPolygon,
+} = require('../utils/geoUtils');
 
 const router = express.Router();
 
 const MSBFP_ENDPOINT =
   'https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/MSBFP2/FeatureServer/0/query';
 
-const MERCATOR_BUFFER_M = 250;
+// Small buffer when querying so edge-of-lot footprints are still fetched before clipping.
+const PARCEL_QUERY_BUFFER_M = 25;
+const POINT_QUERY_BUFFER_M = 150;
 
 function mercatorEnvelopeString(xmin, ymin, xmax, ymax) {
   return `${xmin},${ymin},${xmax},${ymax}`;
 }
 
-function envelopeFromLatLng(lat, lng, bufferM = MERCATOR_BUFFER_M) {
+function envelopeFromLatLng(lat, lng, bufferM) {
   const center = latLngToWebMercator(lat, lng);
   return mercatorEnvelopeString(
     center.x - bufferM,
@@ -23,7 +30,7 @@ function envelopeFromLatLng(lat, lng, bufferM = MERCATOR_BUFFER_M) {
   );
 }
 
-function envelopeFromGeometry(geometry, bufferM = MERCATOR_BUFFER_M) {
+function envelopeFromGeometry(geometry, bufferM) {
   const bbox = getBoundingBox(geometry);
   const sw = latLngToWebMercator(bbox.minLat, bbox.minLng);
   const ne = latLngToWebMercator(bbox.maxLat, bbox.maxLng);
@@ -33,6 +40,28 @@ function envelopeFromGeometry(geometry, bufferM = MERCATOR_BUFFER_M) {
     ne.x + bufferM,
     ne.y + bufferM
   );
+}
+
+function filterFeaturesToParcel(features, parcelGeometry) {
+  if (!parcelGeometry || !features?.length) return features || [];
+
+  return features.filter(feature => {
+    if (!feature.geometry) return false;
+    const centroid = getGeometryCentroid(feature.geometry);
+    return centroid && pointInPolygon(centroid.lat, centroid.lng, parcelGeometry);
+  });
+}
+
+function toStructures(features) {
+  return features.map((f, idx) => {
+    const areaSqM = f.properties?.Shape__Area ? parseFloat(f.properties.Shape__Area) : null;
+    const areaSqFt = areaSqM ? Math.round(areaSqM * 10.7639) : null;
+    return {
+      id: idx + 1,
+      squareFeet: areaSqFt,
+      squareMeters: areaSqM ? Math.round(areaSqM) : null,
+    };
+  });
 }
 
 router.get('/', async (req, res) => {
@@ -45,20 +74,23 @@ router.get('/', async (req, res) => {
   const latF = parseFloat(lat);
   const lngF = parseFloat(lng);
 
+  let parcelGeometry = null;
   let envelope;
+
   if (geometry) {
     try {
-      envelope = envelopeFromGeometry(JSON.parse(geometry));
+      parcelGeometry = JSON.parse(geometry);
+      envelope = envelopeFromGeometry(parcelGeometry, PARCEL_QUERY_BUFFER_M);
     } catch {
-      envelope = null;
+      parcelGeometry = null;
     }
   }
+
   if (!envelope) {
-    envelope = envelopeFromLatLng(latF, lngF);
+    envelope = envelopeFromLatLng(latF, lngF, POINT_QUERY_BUFFER_M);
   }
 
   try {
-    // MSBFP2 is nationwide in Web Mercator; filter to PA and use 3857 geometry.
     const response = await axios.get(MSBFP_ENDPOINT, {
       params: {
         where: "StateAbbrev='PA'",
@@ -70,7 +102,7 @@ router.get('/', async (req, res) => {
         returnGeometry: true,
         f: 'geojson',
         outSR: 4326,
-        resultRecordCount: 50,
+        resultRecordCount: parcelGeometry ? 100 : 50,
       },
       timeout: 90000,
     });
@@ -88,23 +120,20 @@ router.get('/', async (req, res) => {
       });
     }
 
-    if (!data.features || data.features.length === 0) {
+    const rawFeatures = data.features || [];
+    const onParcel = parcelGeometry
+      ? filterFeaturesToParcel(rawFeatures, parcelGeometry)
+      : rawFeatures;
+
+    if (!onParcel.length) {
       return res.json({ features: [], count: 0, structures: [] });
     }
 
-    const structures = data.features.map((f, idx) => {
-      const areaSqM = f.properties?.Shape__Area ? parseFloat(f.properties.Shape__Area) : null;
-      const areaSqFt = areaSqM ? Math.round(areaSqM * 10.7639) : null;
-      return {
-        id: idx + 1,
-        squareFeet: areaSqFt,
-        squareMeters: areaSqM ? Math.round(areaSqM) : null,
-      };
-    });
+    const structures = toStructures(onParcel);
 
     return res.json({
-      features: data.features,
-      count: data.features.length,
+      features: onParcel,
+      count: onParcel.length,
       structures,
     });
   } catch (err) {

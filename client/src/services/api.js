@@ -68,7 +68,7 @@ export async function getSoil(lat, lng, geometry) {
 export async function getBuildings(lat, lng, geometry) {
   const params = { lat, lng };
   if (geometry) params.geometry = JSON.stringify(geometry);
-  const { data } = await axios.get(`${BASE}/buildings`, { params, timeout: 18000 });
+  const { data } = await axios.get(`${BASE}/buildings`, { params, timeout: 90000 });
   return data;
 }
 
