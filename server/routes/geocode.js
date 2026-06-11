@@ -10,6 +10,35 @@ const NOMINATIM_HEADERS = {
   Accept: 'application/json',
 };
 
+async function censusGeocode(address) {
+  const response = await axios.get(
+    'https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress',
+    {
+      params: {
+        address,
+        benchmark: 'Public_AR_Current',
+        vintage: 'Current_Current',
+        format: 'json',
+      },
+      timeout: 12000,
+    }
+  );
+
+  const match = response.data?.result?.addressMatches?.[0];
+  if (!match?.coordinates) return null;
+
+  const counties = match.geographies?.Counties || [];
+  const countyName = counties[0]?.NAME ? `${counties[0].NAME} County` : '';
+
+  return {
+    lat: match.coordinates.y,
+    lng: match.coordinates.x,
+    displayName: match.matchedAddress || address,
+    county: countyName,
+    municipality: match.addressComponents?.city || '',
+  };
+}
+
 async function nominatimSearch(params) {
   const response = await axios.get('https://nominatim.openstreetmap.org/search', {
     params: { format: 'json', addressdetails: 1, limit: 1, countrycodes: 'us', ...params },
@@ -30,7 +59,30 @@ router.get('/', async (req, res) => {
     const parsed = parseSearchAddress(address);
     let result = null;
 
-    if (parsed.streetNumber && parsed.streetLine) {
+    // Census geocoder is more reliable for Pennsylvania street addresses.
+    const censusLine = parsed.streetLine
+      ? `${parsed.streetLine}${parsed.city ? `, ${parsed.city}` : ''}, PA${parsed.zip ? ` ${parsed.zip}` : ''}`
+      : `${address.trim()}, Pennsylvania`;
+
+    try {
+      const census = await censusGeocode(censusLine);
+      if (census) {
+        result = {
+          lat: census.lat,
+          lon: census.lng,
+          display_name: census.displayName,
+          address: {
+            county: census.county,
+            city: census.municipality,
+            state: 'Pennsylvania',
+          },
+        };
+      }
+    } catch (err) {
+      console.warn('[geocode] census failed:', err.message);
+    }
+
+    if (!result && parsed.streetNumber && parsed.streetLine) {
       result = await nominatimSearch({
         street: parsed.streetLine,
         city: parsed.city || undefined,
@@ -59,7 +111,7 @@ router.get('/', async (req, res) => {
       searchedAddress: address.trim(),
       county: countyRaw,
       countyKey,
-      state: addr.state || '',
+      state: addr.state || 'Pennsylvania',
       municipality: addr.city || addr.town || addr.village || addr.suburb || parsed.city || '',
     });
   } catch (err) {

@@ -1,6 +1,20 @@
 const STREET_SUFFIXES =
   /\b(RD|ROAD|DR|DRIVE|LN|LANE|ST|STREET|AVE|AVENUE|BLVD|CT|COURT|WAY|PL|PLACE|CIR|CIRCLE|TRL|TRAIL|PKWY|PARKWAY|HWY|HIGHWAY)\b\.?/gi;
 
+const SUFFIX_ABBREV = {
+  ROAD: 'RD',
+  DRIVE: 'DR',
+  LANE: 'LN',
+  STREET: 'ST',
+  AVENUE: 'AVE',
+  COURT: 'CT',
+  CIRCLE: 'CIR',
+  TRAIL: 'TRL',
+  PARKWAY: 'PKWY',
+  HIGHWAY: 'HWY',
+  PLACE: 'PL',
+};
+
 function escapeArcGIS(value) {
   return String(value).replace(/'/g, "''");
 }
@@ -80,10 +94,16 @@ function buildAddressWhereClauses(searchAddress, addressSearch) {
   const searchFields = getAddressSearchFields(addressSearch);
   const clauses = [];
 
+  const extraTokens = new Set(tokens);
+  for (const token of [...tokens, ...fullTokens]) {
+    if (SUFFIX_ABBREV[token]) extraTokens.add(SUFFIX_ABBREV[token]);
+  }
+  const allTokens = [...extraTokens];
+
   // 1. Strict: house number + every significant street token
-  if (searchFields.length > 0 && tokens.length > 0) {
+  if (searchFields.length > 0 && allTokens.length > 0) {
     const strictParts = [`${numField} = ${num}`];
-    for (const token of tokens.slice(0, 3)) {
+    for (const token of allTokens.slice(0, 4)) {
       const streetClauses = searchFields.map(
         field => `UPPER(${field}) LIKE '%${escapeArcGIS(token)}%'`
       );
@@ -93,8 +113,8 @@ function buildAddressWhereClauses(searchAddress, addressSearch) {
   }
 
   // 2. House number + primary street token only
-  if (searchFields.length > 0 && tokens.length > 0) {
-    const primary = tokens[0];
+  if (searchFields.length > 0 && allTokens.length > 0) {
+    const primary = tokens[0] || allTokens[0];
     const streetClauses = searchFields.map(
       field => `UPPER(${field}) LIKE '%${escapeArcGIS(primary)}%'`
     );
@@ -164,6 +184,10 @@ function scoreAddressMatch(searchAddress, parcelAddress) {
     const cityToken = parsed.city.toUpperCase().split(/\s+/)[0];
     if (cityToken.length > 2 && parcel.includes(cityToken)) score += 5;
   }
+
+  const searchHasUnit = /#\s*\w|\bUNIT\b|\bAPT\b|\bSTE\b/i.test(parsed.streetLine);
+  const parcelHasUnit = /#\s*\w|\bUNIT\b|\bAPT\b|\bSTE\b/i.test(parcel);
+  if (parcelHasUnit && !searchHasUnit) score -= 30;
 
   return score;
 }

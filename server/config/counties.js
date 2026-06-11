@@ -13,6 +13,9 @@ const COUNTIES = {
     state: 'Pennsylvania',
     parcelEndpoint:
       'https://maps.yorkcounty.gov/arcgis/rest/services/AGOservices/Landrecords_Service/FeatureServer/7/query',
+    addressPointEndpoint:
+      'https://maps.yorkcounty.gov/arcgis/rest/services/AGOservices/Landrecords_Service/FeatureServer/0/query',
+    nativeSr: 102747,
     fields: {
       ownerName: 'ownerName',
       ownerName2: 'ownerCOLine',
@@ -33,6 +36,12 @@ const COUNTIES = {
       visStreetName: 'VIS_streetName',
       fireStAddr: 'FireStAddr',
       pollAddr: 'PollAddr',
+    },
+    addressPointSearch: {
+      siteAddress: 'ADDRESS',
+      streetNumber: 'STRTNUMB',
+      streetName: 'NAME',
+      alternateStreetName: 'WHOLE_NAME',
     },
     districtLookup: {
       '20': 'Carroll Township',
