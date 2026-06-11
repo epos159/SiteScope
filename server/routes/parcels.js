@@ -1,15 +1,25 @@
 const express = require('express');
 const axios = require('axios');
 const { COUNTIES } = require('../config/counties');
-const { getBoundingBox, bboxToEsriEnvelope, getGeometryCentroid } = require('../utils/geoUtils');
 const {
-  buildAddressWhereClause,
-  pickBestAddressMatch,
+  getBoundingBox,
+  bboxToEsriEnvelope,
+  getGeometryCentroid,
+  pointInPolygon,
+  getPolygonArea,
+} = require('../utils/geoUtils');
+const {
+  buildAddressWhereClauses,
+  pickBestParcelMatch,
   scoreAddressMatch,
 } = require('../utils/addressUtils');
 
+const geoUtils = { pointInPolygon, getGeometryCentroid, getPolygonArea };
+
 const router = express.Router();
 const TIMEOUT = 25000;
+const GEOCODE_SEARCH_BUFFER = 0.003;
+const POINT_CANDIDATE_BUFFER = 0.0002;
 
 async function queryArcGIS(endpoint, params) {
   const response = await axios.get(endpoint, {
@@ -55,124 +65,177 @@ function toFeature(rawFeature, county, fields) {
   };
 }
 
-async function fetchParcelFeature(lat, lng, county, endpoint, fields) {
-  const data = await queryArcGIS(endpoint, {
-    geometry: JSON.stringify({ x: parseFloat(lng), y: parseFloat(lat) }),
-    geometryType: 'esriGeometryPoint',
-    spatialRel: 'esriSpatialRelIntersects',
-    outFields: '*',
-    returnGeometry: true,
-  });
-
-  if (!data.features?.length) return null;
-  return toFeature(data.features[0], county, fields);
+function geocodeEnvelope(lat, lng, bufferDeg = GEOCODE_SEARCH_BUFFER) {
+  return bboxToEsriEnvelope(
+    {
+      minLng: lng,
+      maxLng: lng,
+      minLat: lat,
+      maxLat: lat,
+    },
+    bufferDeg
+  );
 }
 
-async function fetchParcelByAddress(searchAddress, county, endpoint, fields, addressSearch) {
-  const where = buildAddressWhereClause(searchAddress, addressSearch);
-  if (!where) return null;
-
+async function fetchParcelCandidatesNearPoint(lat, lng, endpoint, bufferDeg = POINT_CANDIDATE_BUFFER) {
+  const envelope = geocodeEnvelope(lat, lng, bufferDeg);
   const data = await queryArcGIS(endpoint, {
-    where,
+    geometry: JSON.stringify(envelope),
+    geometryType: 'esriGeometryEnvelope',
+    spatialRel: 'esriSpatialRelIntersects',
     outFields: '*',
     returnGeometry: true,
     resultRecordCount: 25,
   });
 
-  if (!data.features?.length) return null;
+  return data.features || [];
+}
 
-  const best = pickBestAddressMatch(searchAddress, data.features, fields.siteAddress);
+async function fetchParcelByAddress(searchAddress, lat, lng, county, endpoint, fields, addressSearch) {
+  const strategies = buildAddressWhereClauses(searchAddress, addressSearch);
+  if (!strategies.length) return null;
+
+  const envelope = geocodeEnvelope(lat, lng, GEOCODE_SEARCH_BUFFER);
+
+  for (const where of strategies) {
+    try {
+      const data = await queryArcGIS(endpoint, {
+        geometry: JSON.stringify(envelope),
+        geometryType: 'esriGeometryEnvelope',
+        spatialRel: 'esriSpatialRelIntersects',
+        where,
+        outFields: '*',
+        returnGeometry: true,
+        resultRecordCount: 50,
+      });
+
+      if (!data.features?.length) continue;
+
+      const best = pickBestParcelMatch(
+        searchAddress,
+        data.features,
+        addressSearch,
+        lat,
+        lng,
+        geoUtils
+      );
+
+      if (best) return toFeature(best, county, fields);
+    } catch (err) {
+      console.warn('[parcels] address strategy failed:', err.message);
+    }
+  }
+
+  // Last resort: rank all nearby parcels by address + proximity without a WHERE filter.
+  try {
+    const data = await queryArcGIS(endpoint, {
+      geometry: JSON.stringify(envelope),
+      geometryType: 'esriGeometryEnvelope',
+      spatialRel: 'esriSpatialRelIntersects',
+      outFields: '*',
+      returnGeometry: true,
+      resultRecordCount: 50,
+    });
+
+    const best = pickBestParcelMatch(searchAddress, data.features, addressSearch, lat, lng, geoUtils);
+    if (best) return toFeature(best, county, fields);
+  } catch (err) {
+    console.warn('[parcels] spatial address ranking failed:', err.message);
+  }
+
+  return null;
+}
+
+async function fetchParcelNearPoint(lat, lng, county, endpoint, fields, searchAddress, addressSearch) {
+  const candidates = await fetchParcelCandidatesNearPoint(lat, lng, endpoint);
+  if (!candidates.length) return null;
+
+  const best = pickBestParcelMatch(
+    searchAddress || null,
+    candidates,
+    addressSearch || {},
+    lat,
+    lng,
+    geoUtils
+  );
+
   if (!best) return null;
-
   return toFeature(best, county, fields);
 }
 
 async function resolveParcel(lat, lng, countyKey, searchAddress) {
   const county = COUNTIES[countyKey];
-  // Address search uses county official data only — no PASDA fallback for address matching
-  const attempts = [
-    {
-      endpoint: county.parcelEndpoint,
-      fields: county.fields,
-      addressSearch: county.addressSearch,
-      countyConfig: county,
-    },
-  ];
+  const endpoint = county.parcelEndpoint;
+  const fields = county.fields;
+  const addressSearch = county.addressSearch;
 
   let addressMatch = null;
-  let addressEndpoint = null;
-  let addressFields = null;
 
-  if (searchAddress) {
-    for (const attempt of attempts) {
-      if (!attempt.addressSearch) continue;
-      try {
-        const feature = await fetchParcelByAddress(
-          searchAddress,
-          attempt.countyConfig,
-          attempt.endpoint,
-          attempt.fields,
-          attempt.addressSearch
-        );
-        if (feature) {
-          addressMatch = feature;
-          addressEndpoint = attempt.endpoint;
-          addressFields = attempt.fields;
-          break;
-        }
-      } catch (err) {
-        console.warn('[parcels] address search failed:', err.message);
-      }
+  if (searchAddress && addressSearch) {
+    try {
+      addressMatch = await fetchParcelByAddress(
+        searchAddress,
+        lat,
+        lng,
+        county,
+        endpoint,
+        fields,
+        addressSearch
+      );
+    } catch (err) {
+      console.warn('[parcels] address search failed:', err.message);
     }
   }
 
   let pointMatch = null;
-  let pointEndpoint = county.parcelEndpoint;
-  let pointFields = county.fields;
-
   try {
-    pointMatch = await fetchParcelFeature(lat, lng, county, county.parcelEndpoint, county.fields);
+    pointMatch = await fetchParcelNearPoint(
+      lat,
+      lng,
+      county,
+      endpoint,
+      fields,
+      searchAddress,
+      addressSearch
+    );
   } catch (err) {
     console.warn('[parcels] point query failed:', err.message);
   }
 
-  if (!pointMatch && county.fallbackEndpoint && county.fallbackFields) {
-    try {
-      pointMatch = await fetchParcelFeature(
-        lat,
-        lng,
-        { ...county, acreageFromShapeArea: true },
-        county.fallbackEndpoint,
-        county.fallbackFields
-      );
-      pointEndpoint = county.fallbackEndpoint;
-      pointFields = county.fallbackFields;
-    } catch (err) {
-      console.warn('[parcels] fallback point query failed:', err.message);
-    }
-  }
-
   if (addressMatch) {
-    const pointAddress = pointMatch?.properties?.siteAddress;
     const addressScore = scoreAddressMatch(searchAddress, addressMatch.properties.siteAddress);
-    const pointScore = pointAddress ? scoreAddressMatch(searchAddress, pointAddress) : 0;
 
     return {
       feature: addressMatch,
-      activeEndpoint: addressEndpoint,
-      activeFields: addressFields,
+      activeEndpoint: endpoint,
+      activeFields: fields,
       matchMethod: 'address',
-      geocodeMismatch: pointMatch && pointScore < addressScore,
+      geocodeMismatch: pointMatch && pointMatch.properties?.parcelId !== addressMatch.properties?.parcelId,
+      matchConfidence: addressScore >= 65 ? 'high' : 'medium',
     };
   }
 
+  if (pointMatch && searchAddress) {
+    const pointAddressScore = scoreAddressMatch(searchAddress, pointMatch.properties.siteAddress);
+    if (pointAddressScore < 25) {
+      pointMatch = null;
+    }
+  }
+
   if (pointMatch) {
+    const pointContainsGeocode = pointInPolygon(lat, lng, pointMatch.geometry);
+    const pointAddressScore = searchAddress
+      ? scoreAddressMatch(searchAddress, pointMatch.properties.siteAddress)
+      : 0;
+
     return {
       feature: pointMatch,
-      activeEndpoint: pointEndpoint,
-      activeFields: pointFields,
+      activeEndpoint: endpoint,
+      activeFields: fields,
       matchMethod: 'point',
-      geocodeMismatch: false,
+      geocodeMismatch: Boolean(searchAddress) && pointAddressScore < 40,
+      matchConfidence: searchAddress ? (pointAddressScore >= 40 ? 'low' : 'very-low') : 'point-click',
+      geocodeOnBoundary: !pointContainsGeocode,
     };
   }
 
@@ -207,7 +270,8 @@ router.get('/', async (req, res) => {
       });
     }
 
-    const { feature, activeEndpoint, activeFields, matchMethod, geocodeMismatch } = resolved;
+    const { feature, activeEndpoint, activeFields, matchMethod, geocodeMismatch, matchConfidence, geocodeOnBoundary } =
+      resolved;
     const normalized = feature.properties;
 
     let neighbors = [];
@@ -259,6 +323,8 @@ router.get('/', async (req, res) => {
       neighbors,
       matchMethod,
       geocodeMismatch,
+      matchConfidence,
+      geocodeOnBoundary,
     });
   } catch (err) {
     console.error('[parcels] error:', err.message);

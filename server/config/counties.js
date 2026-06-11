@@ -29,22 +29,10 @@ const COUNTIES = {
       streetNumber: 'STRTNUMB',
       streetName: 'STNAME',
       alternateStreetName: 'WHOLE_STNAME',
-    },
-    // Fallback if the primary county endpoint is unavailable
-    fallbackEndpoint:
-      'https://services.pasda.psu.edu/server/rest/services/pasda/YorkCounty/MapServer/31/query',
-    fallbackFields: {
-      ownerName: 'OWNER_FULL',
-      ownerName2: 'OWN_NAME2',
-      parcelId: 'PIDN',
-      acreage: 'Shape_Area',
-      acreageDirect: null,
-      municipality: null,
-      siteAddress: 'PROPADR',
-      districtField: 'DISTRICT',
-    },
-    fallbackAddressSearch: {
-      siteAddress: 'PROPADR',
+      visStreetNumber: 'VIS_streetNumber',
+      visStreetName: 'VIS_streetName',
+      fireStAddr: 'FireStAddr',
+      pollAddr: 'PollAddr',
     },
     districtLookup: {
       '20': 'Carroll Township',

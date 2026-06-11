@@ -120,6 +120,12 @@
   line-height: 1.45;
 }
 
+.parcel-match-note--warn {
+  color: #92400e;
+  background: #fffbeb;
+  border-color: #fcd34d;
+}
+
 /* ─── Field / Value rows ──────────────────────────────────────── */
 .field-row {
   display: flex;

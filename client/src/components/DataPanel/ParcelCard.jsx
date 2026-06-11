@@ -27,9 +27,25 @@ export default function ParcelCard({ data, isLoading, onNeighborClick }) {
           <p className="data-card-unavailable">Data not available for this location.</p>
         )}
 
-        {!isLoading && data?.geocodeMismatch && props?.siteAddress && (
+        {!isLoading && data?.matchMethod === 'address' && data?.geocodeMismatch && props?.siteAddress && (
           <p className="parcel-match-note">
-            Matched parcel by county address records: <strong>{props.siteAddress}</strong>
+            Matched by county address records: <strong>{props.siteAddress}</strong>. The map pin may be offset from this parcel.
+          </p>
+        )}
+
+        {!isLoading && data?.matchMethod === 'point' && (
+          <p className="parcel-match-note parcel-match-note--warn">
+            Could not confidently match your searched address. Showing the nearest county parcel
+            {props?.siteAddress ? (
+              <> (<strong>{props.siteAddress}</strong>)</>
+            ) : null}
+            . Click the correct parcel on the map if this owner looks wrong.
+          </p>
+        )}
+
+        {!isLoading && data?.geocodeOnBoundary && (
+          <p className="parcel-match-note">
+            The map pin sits on a parcel boundary — verify this is the correct lot.
           </p>
         )}
 
@@ -113,8 +129,11 @@ export default function ParcelCard({ data, isLoading, onNeighborClick }) {
           </>
         )}
 
-        {!isLoading && !props && data?.supported !== false && !data?.error && !data?.message && (
-          <p className="data-card-unavailable">No parcel found at this location.</p>
+        {!isLoading && !props && data?.supported !== false && !data?.error && (
+          <p className="data-card-unavailable">
+            {data?.message || 'No parcel found at this location.'}
+            {' '}Try clicking the correct parcel directly on the map.
+          </p>
         )}
       </div>
     </div>

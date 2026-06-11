@@ -114,6 +114,63 @@ function bboxToWkt(bbox, bufferDeg = 0) {
 }
 
 /**
+ * Ray-casting point-in-polygon test for GeoJSON Polygon / MultiPolygon.
+ */
+function pointInPolygon(lat, lng, geometry) {
+  if (!geometry) return false;
+
+  const testRing = ring => {
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, yi] = ring[i];
+      const [xj, yj] = ring[j];
+      const intersect =
+        yi > lat !== yj > lat &&
+        lng < ((xj - xi) * (lat - yi)) / (yj - yi + 0.0) + xi;
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  };
+
+  if (geometry.type === 'Polygon') {
+    return testRing(geometry.coordinates[0]);
+  }
+
+  if (geometry.type === 'MultiPolygon') {
+    return geometry.coordinates.some(poly => testRing(poly[0]));
+  }
+
+  return false;
+}
+
+/**
+ * Approximate polygon area in square degrees (for relative size comparisons).
+ */
+function getPolygonArea(geometry) {
+  if (!geometry) return 0;
+
+  const ringArea = ring => {
+    let area = 0;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, yi] = ring[i];
+      const [xj, yj] = ring[j];
+      area += (xj + xi) * (yj - yi);
+    }
+    return Math.abs(area / 2);
+  };
+
+  if (geometry.type === 'Polygon') {
+    return ringArea(geometry.coordinates[0]);
+  }
+
+  if (geometry.type === 'MultiPolygon') {
+    return geometry.coordinates.reduce((sum, poly) => sum + ringArea(poly[0]), 0);
+  }
+
+  return 0;
+}
+
+/**
  * Convert WGS84 lat/lng to Web Mercator (EPSG:3857).
  */
 function latLngToWebMercator(lat, lng) {
@@ -128,6 +185,8 @@ module.exports = {
   geojsonToWkt,
   getBoundingBox,
   getGeometryCentroid,
+  pointInPolygon,
+  getPolygonArea,
   pointToBufferWkt,
   bboxToEsriEnvelope,
   bboxToWkt,
