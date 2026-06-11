@@ -201,6 +201,22 @@ function scoreAddressMatch(searchAddress, parcelAddress) {
   const parcelHasUnit = /#\s*\w|\bUNIT\b|\bAPT\b|\bSTE\b/i.test(parcel);
   if (parcelHasUnit && !searchHasUnit) score -= 30;
 
+  // Penalize mismatched street direction (e.g. 59 E Lincoln vs 59 W Lincoln).
+  const dirMatch = parsed.streetLine.match(/\b(N|S|E|W|NE|NW|SE|SW)\b/i);
+  if (dirMatch) {
+    const dir = dirMatch[1].toUpperCase();
+    const parcelDir = parcel.match(
+      new RegExp(`\\b${dir[0]}(?:\\s+${dir.slice(1)}|\\b)`, 'i')
+    );
+    const opposite =
+      (dir === 'E' && /\bW\b/.test(parcel)) ||
+      (dir === 'W' && /\bE\b/.test(parcel)) ||
+      (dir === 'N' && /\bS\b/.test(parcel)) ||
+      (dir === 'S' && /\bN\b/.test(parcel));
+    if (opposite) return 0;
+    if (!parcelDir) score -= 15;
+  }
+
   return score;
 }
 

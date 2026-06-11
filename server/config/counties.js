@@ -127,17 +127,17 @@ const COUNTIES = {
     parcelEndpoint:
       'https://mapping.adamscountypa.gov/arcgis/rest/services/AGOL/Parcel_Owners/MapServer/0/query',
     fields: {
-      ownerName: 'OWNER_NAME',
-      ownerName2: 'OWNER_NAME2',
-      parcelId: 'PARCEL_ID',
+      ownerName: 'SHORT_NAME',
+      ownerName2: null,
+      parcelId: 'Parcel_ID',
       acreage: null,
-      acreageDirect: 'ACRES',
-      municipality: 'MUNICIPALITY',
-      siteAddress: 'SITEADDR',
+      acreageDirect: 'DEEDED_ACRES',
+      municipality: 'DISTRICT_NAME',
+      siteAddress: 'COMBINED_SITUS',
     },
     acreageFromShapeArea: false,
     addressSearch: {
-      siteAddress: 'SITEADDR',
+      siteAddress: 'COMBINED_SITUS',
     },
   },
 };
