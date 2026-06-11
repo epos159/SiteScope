@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import * as api from '../services/api';
 import { getFeatureCentroid } from '../utils/geo';
+import { inferCountyKey } from '../utils/county';
 
 const initialState = {
   status: 'idle', // 'idle' | 'loading' | 'done' | 'error'
@@ -87,21 +88,23 @@ export function useSiteData() {
    * Skips geocoding; uses supplied lat/lng directly.
    */
   const searchByCoords = useCallback(async (lat, lng, countyKey, ownerLabel) => {
+    const effectiveCountyKey = countyKey || inferCountyKey(lat, lng);
+
     setState(prev => ({
       ...initialState,
       status: 'loading',
       location: {
         lat,
         lng,
-        countyKey,
-        county: prev.location?.county || '',
+        countyKey: effectiveCountyKey,
+        county: prev.location?.county || (effectiveCountyKey === 'york' ? 'York County' : effectiveCountyKey === 'adams' ? 'Adams County' : ''),
         state: prev.location?.state || 'Pennsylvania',
         displayName: ownerLabel || `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
         municipality: '',
       },
     }));
 
-    await loadAllData(lat, lng, countyKey, null, setState);
+    await loadAllData(lat, lng, effectiveCountyKey, null, setState);
   }, []);
 
   return { state, search, searchByCoords };

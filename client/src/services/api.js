@@ -15,6 +15,18 @@ export async function geocode(address) {
 }
 
 /**
+ * Address autocomplete suggestions for the search bar.
+ * Returns { suggestions: [{ address, source }] }
+ */
+export async function suggestAddresses(query) {
+  const { data } = await axios.get(`${BASE}/address-suggest`, {
+    params: { q: query },
+    timeout: 8000,
+  });
+  return data;
+}
+
+/**
  * Fetch parcel data for a geocoded point.
  * Returns { supported, feature, neighbors, message?, error? }
  */

@@ -18,9 +18,7 @@ export default function App() {
 
   const handleParcelClick = useCallback(
     (lat, lng, ownerLabel) => {
-      const countyKey = state.location?.countyKey;
-      if (!countyKey) return;
-      searchByCoords(lat, lng, countyKey, ownerLabel || 'Selected parcel');
+      searchByCoords(lat, lng, state.location?.countyKey, ownerLabel || 'Selected parcel');
     },
     [searchByCoords, state.location?.countyKey]
   );

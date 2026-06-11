@@ -1,6 +1,6 @@
 const express = require('express');
 const axios = require('axios');
-const { COUNTIES } = require('../config/counties');
+const { COUNTIES, inferCountyKeyFromCoords } = require('../config/counties');
 const { getBoundingBox, bboxToEsriEnvelope, getGeometryCentroid } = require('../utils/geoUtils');
 const { resolveYorkParcel } = require('../utils/yorkParcelResolver');
 const {
@@ -214,7 +214,10 @@ router.get('/', async (req, res) => {
     return res.status(400).json({ error: 'lat and lng are required' });
   }
 
-  if (!countyKey || !COUNTIES[countyKey]) {
+  const effectiveCountyKey =
+    countyKey && COUNTIES[countyKey] ? countyKey : inferCountyKeyFromCoords(lat, lng);
+
+  if (!effectiveCountyKey || !COUNTIES[effectiveCountyKey]) {
     return res.json({
       supported: false,
       message: `Parcel data is currently available for York and Adams County, PA. Support for additional counties is coming soon.`,
@@ -224,7 +227,7 @@ router.get('/', async (req, res) => {
   }
 
   try {
-    const resolved = await resolveParcel(lat, lng, countyKey, address);
+    const resolved = await resolveParcel(lat, lng, effectiveCountyKey, address);
 
     if (!resolved) {
       return res.json({
@@ -232,7 +235,7 @@ router.get('/', async (req, res) => {
         feature: null,
         neighbors: [],
         message: address
-          ? 'No parcel found matching this address. Try clicking the correct parcel on the map.'
+          ? 'No parcel found for this address.'
           : 'No parcel found at this location.',
       });
     }
@@ -278,7 +281,7 @@ router.get('/', async (req, res) => {
             })
             .map(f => {
               let geometry = f.geometry || null;
-              if (geometry && countyKey === 'york' && alignmentDelta) {
+              if (geometry && effectiveCountyKey === 'york' && alignmentDelta) {
                 geometry = applyAlignmentDelta(geometry, alignmentDelta);
               }
               const centroid = getGeometryCentroid(geometry);

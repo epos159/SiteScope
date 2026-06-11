@@ -1,6 +1,6 @@
 const express = require('express');
 const axios = require('axios');
-const { resolveCountyKey } = require('../config/counties');
+const { resolveCountyKey, inferCountyKeyFromCoords } = require('../config/counties');
 const { parseSearchAddress } = require('../utils/addressUtils');
 
 const router = express.Router();
@@ -28,7 +28,9 @@ async function censusGeocode(address) {
   if (!match?.coordinates) return null;
 
   const counties = match.geographies?.Counties || [];
-  const countyName = counties[0]?.NAME ? `${counties[0].NAME} County` : '';
+  const countyBase = counties[0]?.NAME || '';
+  const countyName =
+    countyBase && !/county/i.test(countyBase) ? `${countyBase} County` : countyBase;
 
   return {
     lat: match.coordinates.y,
@@ -102,11 +104,13 @@ router.get('/', async (req, res) => {
 
     const addr = result.address || {};
     const countyRaw = addr.county || '';
-    const countyKey = resolveCountyKey(countyRaw);
+    const lat = parseFloat(result.lat);
+    const lng = parseFloat(result.lon);
+    const countyKey = resolveCountyKey(countyRaw) || inferCountyKeyFromCoords(lat, lng);
 
     return res.json({
-      lat: parseFloat(result.lat),
-      lng: parseFloat(result.lon),
+      lat,
+      lng,
       displayName: result.display_name,
       searchedAddress: address.trim(),
       county: countyRaw,

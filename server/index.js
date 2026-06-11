@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 
 const geocodeRouter = require('./routes/geocode');
+const addressSuggestRouter = require('./routes/addressSuggest');
 const parcelsRouter = require('./routes/parcels');
 const floodRouter = require('./routes/flood');
 const soilRouter = require('./routes/soil');
@@ -16,6 +17,7 @@ app.use(cors({ origin: process.env.CLIENT_ORIGIN || '*' }));
 app.use(express.json());
 
 app.use('/api/geocode', geocodeRouter);
+app.use('/api/address-suggest', addressSuggestRouter);
 app.use('/api/parcels', parcelsRouter);
 app.use('/api/flood', floodRouter);
 app.use('/api/soil', soilRouter);

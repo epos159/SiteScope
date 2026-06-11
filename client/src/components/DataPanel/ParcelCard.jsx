@@ -132,7 +132,7 @@ export default function ParcelCard({ data, isLoading, onNeighborClick }) {
         {!isLoading && !props && data?.supported !== false && !data?.error && (
           <p className="data-card-unavailable">
             {data?.message || 'No parcel found at this location.'}
-            {' '}Try clicking the correct parcel directly on the map.
+            {' '}Click the correct parcel on the map, or try a more complete address with city and ZIP.
           </p>
         )}
       </div>

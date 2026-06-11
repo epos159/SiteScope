@@ -6,6 +6,7 @@ const {
 } = require('./addressUtils');
 const { getGeometryCentroid } = require('./geoUtils');
 const { alignGeometryToGeocode } = require('./geometryAlign');
+const { geocodeToYorkNative } = require('./yorkCrs');
 
 const TIMEOUT = 30000;
 const NATIVE_SR = 102747;
@@ -63,8 +64,62 @@ function pickBestAddressPoint(searchAddress, features, addressSearch, geocodeLng
     }
   }
 
-  if (scoreParcelAddressMatch(searchAddress, best, addressSearch) < 25) return null;
+  if (scoreParcelAddressMatch(searchAddress, best, addressSearch) < 15) return null;
   return best;
+}
+
+async function searchAddressPointsByNumber(searchAddress, county, geocodeLng) {
+  const parsed = parseSearchAddress(searchAddress);
+  const num = parsed.streetNumber ? parseInt(parsed.streetNumber, 10) : NaN;
+  if (Number.isNaN(num)) return null;
+
+  try {
+    const data = await queryLayer(county.addressPointEndpoint, {
+      where: `STRTNUMB = ${num}`,
+      outFields: 'GPIN,ADDRESS,WHOLE_NAME,NAME,STRTNUMB',
+      returnGeometry: true,
+      resultRecordCount: 100,
+    });
+
+    const features = data.features || [];
+    if (!features.length) return null;
+
+    if (geocodeLng != null) {
+      let best = null;
+      let bestDist = Infinity;
+      for (const feature of features) {
+        const lng = feature.geometry?.coordinates?.[0];
+        if (lng == null) continue;
+        const dist = Math.abs(lng - geocodeLng);
+        const addressScore = scoreParcelAddressMatch(searchAddress, feature, county.addressPointSearch);
+        const combined = dist * 100 - addressScore;
+        if (combined < bestDist) {
+          bestDist = combined;
+          best = feature;
+        }
+      }
+      if (best && scoreParcelAddressMatch(searchAddress, best, county.addressPointSearch) >= 15) {
+        return best;
+      }
+    }
+
+    return pickBestAddressPoint(searchAddress, features, county.addressPointSearch, geocodeLng);
+  } catch (err) {
+    console.warn('[parcels/york] street number search failed:', err.message);
+    return null;
+  }
+}
+
+async function fetchParcelAtCoords(lat, lng, county) {
+  const native = geocodeToYorkNative(lng, lat);
+  const raw = await fetchParcelNearNativePoint(native, county);
+  if (!raw) return null;
+
+  return {
+    raw,
+    matchMethod: 'point',
+    matchConfidence: 'medium',
+  };
 }
 
 async function searchAddressPoints(searchAddress, county, geocodeLng) {
@@ -220,6 +275,9 @@ async function resolveYorkParcel(lat, lng, county, searchAddress) {
 
   if (searchAddress) {
     addressPoint = await searchAddressPoints(searchAddress, county, lng);
+    if (!addressPoint) {
+      addressPoint = await searchAddressPointsByNumber(searchAddress, county, lng);
+    }
   }
 
   let rawParcel = null;
@@ -248,12 +306,6 @@ async function resolveYorkParcel(lat, lng, county, searchAddress) {
     }
   }
 
-  if (!rawParcel && searchAddress) {
-    // Geocode is still useful for map alignment even when address points miss.
-    matchMethod = 'point';
-    matchConfidence = 'very-low';
-  }
-
   if (!rawParcel) {
     // Last resort: county-wide address search directly on parcel polygons (no spatial filter).
     const strategies = buildAddressWhereClauses(searchAddress || '', county.addressSearch);
@@ -276,7 +328,7 @@ async function resolveYorkParcel(lat, lng, county, searchAddress) {
             best = f;
           }
         }
-        if (best && bestScore >= 40) {
+        if (best && bestScore >= 35) {
           rawParcel = best;
           matchMethod = 'address';
           matchConfidence = bestScore >= 65 ? 'high' : 'medium';
@@ -285,6 +337,15 @@ async function resolveYorkParcel(lat, lng, county, searchAddress) {
       } catch {
         // continue
       }
+    }
+  }
+
+  if (!rawParcel) {
+    const atCoords = await fetchParcelAtCoords(lat, lng, county);
+    if (atCoords) {
+      rawParcel = atCoords.raw;
+      matchMethod = atCoords.matchMethod;
+      matchConfidence = atCoords.matchConfidence;
     }
   }
 
