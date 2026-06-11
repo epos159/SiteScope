@@ -17,7 +17,8 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
   position: sticky;
   top: 0;
-  z-index: 1000;
+  z-index: 1200;
+  overflow: visible;
   flex-shrink: 0;
 }
 
@@ -64,6 +65,8 @@
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
+  position: relative;
+  z-index: 2;
 }
 
 /* ─── Map Section ─────────────────────────────────────────────── */
