@@ -2,14 +2,12 @@ const express = require('express');
 const axios = require('axios');
 const { COUNTIES, inferCountyKeyFromCoords } = require('../config/counties');
 const { getBoundingBox, bboxToEsriEnvelope, getGeometryCentroid } = require('../utils/geoUtils');
-const { resolveYorkParcel } = require('../utils/yorkParcelResolver');
 const {
   buildAddressWhereClauses,
   pickBestParcelMatch,
   scoreParcelAddressMatch,
 } = require('../utils/addressUtils');
 const { pointInPolygon, getPolygonArea } = require('../utils/geoUtils');
-const { alignGeometryToGeocode, applyAlignmentDelta } = require('../utils/geometryAlign');
 
 const router = express.Router();
 const TIMEOUT = 30000;
@@ -50,16 +48,11 @@ function normalizeParcelProps(props, county, fields) {
   };
 }
 
-function toFeature(rawFeature, county, fields, alignLat, alignLng) {
+function toFeature(rawFeature, county, fields) {
   const props = rawFeature.properties || {};
-  let geometry = rawFeature.geometry || null;
-  if (geometry && alignLat != null && alignLng != null) {
-    geometry = alignGeometryToGeocode(geometry, alignLat, alignLng);
-  }
-
   return {
     type: 'Feature',
-    geometry,
+    geometry: rawFeature.geometry || null,
     properties: normalizeParcelProps(props, county, fields),
   };
 }
@@ -122,7 +115,7 @@ async function fetchParcelNearPointGeneric(lat, lng, county, endpoint, fields, s
   );
 
   if (!best) return null;
-  return toFeature(best, county, fields, lat, lng);
+  return toFeature(best, county, fields);
 }
 
 async function resolveGenericParcel(lat, lng, countyKey, searchAddress) {
@@ -172,38 +165,33 @@ async function resolveGenericParcel(lat, lng, countyKey, searchAddress) {
     console.warn('[parcels] point query failed:', err.message);
   }
 
-  if (pointMatch && searchAddress) {
-    const score = scoreParcelAddressMatch(searchAddress, pointMatch, addressSearch);
-    if (score < 25) pointMatch = null;
+  const pointScore =
+    pointMatch && searchAddress
+      ? scoreParcelAddressMatch(searchAddress, pointMatch, addressSearch)
+      : 0;
+
+  // When the user searched an address, require some agreement with the parcel
+  // under the geocoded pin so we don't show an unrelated neighbor.
+  if (pointMatch && searchAddress && pointScore < 25) {
+    pointMatch = null;
   }
 
   if (!pointMatch) return null;
+
+  const containsPoint = pointInPolygon(lat, lng, pointMatch.geometry);
 
   return {
     feature: pointMatch,
     activeEndpoint: endpoint,
     activeFields: fields,
     matchMethod: 'point',
-    geocodeMismatch: Boolean(searchAddress),
-    matchConfidence: 'low',
-    geocodeOnBoundary: !pointInPolygon(lat, lng, pointMatch.geometry),
+    geocodeMismatch: Boolean(searchAddress) && pointScore < 40,
+    matchConfidence: pointScore >= 40 ? 'high' : 'low',
+    geocodeOnBoundary: !containsPoint,
   };
 }
 
 async function resolveParcel(lat, lng, countyKey, searchAddress) {
-  if (countyKey === 'york') {
-    const county = COUNTIES.york;
-    const resolved = await resolveYorkParcel(lat, lng, county, searchAddress);
-    if (!resolved) return null;
-    const { alignmentDelta, ...rest } = resolved;
-    return {
-      ...rest,
-      alignmentDelta,
-      activeEndpoint: county.parcelEndpoint,
-      activeFields: county.fields,
-    };
-  }
-
   return resolveGenericParcel(lat, lng, countyKey, searchAddress);
 }
 
@@ -248,7 +236,6 @@ router.get('/', async (req, res) => {
       geocodeMismatch,
       matchConfidence,
       geocodeOnBoundary,
-      alignmentDelta,
     } = resolved;
     const normalized = feature.properties;
 
@@ -280,10 +267,7 @@ router.get('/', async (req, res) => {
               return true;
             })
             .map(f => {
-              let geometry = f.geometry || null;
-              if (geometry && effectiveCountyKey === 'york' && alignmentDelta) {
-                geometry = applyAlignmentDelta(geometry, alignmentDelta);
-              }
+              const geometry = f.geometry || null;
               const centroid = getGeometryCentroid(geometry);
               return {
                 parcelId: f.properties[activeFields.parcelId] || null,

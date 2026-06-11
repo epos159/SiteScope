@@ -14,23 +14,26 @@ function escapeArcGIS(value) {
 }
 
 async function suggestYorkAddresses(query) {
-  const endpoint = COUNTIES.york.addressPointEndpoint;
-  const token = escapeArcGIS(query.toUpperCase().trim());
-  if (token.length < 3) return [];
+  const endpoint = COUNTIES.york.parcelEndpoint;
+  const raw = query.toUpperCase().trim();
+  if (raw.length < 3) return [];
 
-  const where = [
-    `UPPER(ADDRESS) LIKE '%${token}%'`,
-    `UPPER(WHOLE_NAME) LIKE '%${token}%'`,
-    `UPPER(NAME) LIKE '%${token}%'`,
-  ].join(' OR ');
+  // Match leading "<number> <street>" so suggestions stay address-like.
+  const m = raw.match(/^(\d+)\s+(.*)$/);
+  let where;
+  if (m && m[2].length >= 1) {
+    where = `SITE_ST_NO = ${parseInt(m[1], 10)} AND UPPER(SITE_ST_NAME) LIKE '%${escapeArcGIS(m[2])}%'`;
+  } else {
+    where = `UPPER(PROPADR) LIKE '%${escapeArcGIS(raw)}%'`;
+  }
 
   const response = await axios.get(endpoint, {
     params: {
       where,
-      outFields: 'ADDRESS',
+      outFields: 'PROPADR,MAIL_ADDR3',
       returnGeometry: false,
-      resultRecordCount: 10,
-      orderByFields: 'ADDRESS',
+      resultRecordCount: 25,
+      orderByFields: 'PROPADR',
       f: 'json',
     },
     timeout: 12000,
@@ -39,9 +42,15 @@ async function suggestYorkAddresses(query) {
   const seen = new Set();
   const results = [];
   for (const feature of response.data?.features || []) {
-    const address = feature.attributes?.ADDRESS;
-    if (!address || seen.has(address)) continue;
-    seen.add(address);
+    const propadr = feature.attributes?.PROPADR;
+    if (!propadr) continue;
+    // MAIL_ADDR3 looks like "DOVER PA 17315"; append the town for clarity.
+    const cityState = feature.attributes?.MAIL_ADDR3 || '';
+    const town = cityState.replace(/\s+PA\s+\d{5}.*$/i, '').trim();
+    const address = town ? `${propadr}, ${town}, PA` : propadr;
+    const key = address.toUpperCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
     results.push({ address, source: 'york' });
     if (results.length >= 8) break;
   }

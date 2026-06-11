@@ -161,24 +161,36 @@ function scoreAddressMatch(searchAddress, parcelAddress) {
   const num = parsed.streetNumber.toUpperCase();
 
   const numPattern = new RegExp(`(^|\\s|/)${num}(\\s|$|[A-Z])`, 'i');
-  if (!numPattern.test(parcel)) return 0;
+  const numberMatches = numPattern.test(parcel);
 
-  let score = 25;
+  // Core street-name tokens (suffix stripped), e.g. "FOX RUN" from "Fox Run Rd".
+  const coreTokens = parsed.streetName.split(/\s+/).filter(t => t.length > 1);
+  const allTokens = [...coreTokens, ...parsed.streetNameFull.split(/\s+/).filter(t => t.length > 1)];
+
+  const seen = new Set();
+  let tokenScore = 0;
+  let matchedCore = 0;
+  for (const token of allTokens) {
+    if (seen.has(token)) continue;
+    seen.add(token);
+    if (parcel.includes(token)) {
+      tokenScore += 15;
+      if (coreTokens.includes(token)) matchedCore += 1;
+    }
+  }
+
+  // A real match must agree on the street NAME, not just the house number.
+  // If the user gave a street name but none of its core tokens appear in the
+  // parcel address, this is a different street that merely shares a number.
+  if (coreTokens.length > 0 && matchedCore === 0) return 0;
+
+  let score = 0;
+  if (numberMatches) score += 25;
 
   const leadingNum = parcel.match(/^(\d+[A-Z]?)\b/);
   if (leadingNum && leadingNum[1] === num) score += 40;
 
-  const tokens = [
-    ...parsed.streetName.split(/\s+/),
-    ...parsed.streetNameFull.split(/\s+/),
-  ].filter(t => t.length > 1);
-
-  const seen = new Set();
-  for (const token of tokens) {
-    if (seen.has(token)) continue;
-    seen.add(token);
-    if (parcel.includes(token)) score += 15;
-  }
+  score += tokenScore;
 
   if (parsed.city) {
     const cityToken = parsed.city.toUpperCase().split(/\s+/)[0];
