@@ -57,6 +57,43 @@ async function suggestYorkAddresses(query) {
   return results;
 }
 
+function formatNominatimAddress(item) {
+  const addr = item.address || {};
+  const houseNumber = addr.house_number || '';
+  const road = addr.road || addr.pedestrian || addr.footway || '';
+  const streetLine = [houseNumber, road].filter(Boolean).join(' ').trim();
+
+  const city =
+    addr.city ||
+    addr.town ||
+    addr.village ||
+    addr.hamlet ||
+    addr.municipality ||
+    addr.county ||
+    '';
+
+  const state = addr.state === 'Pennsylvania' ? 'PA' : addr.state || 'PA';
+
+  if (streetLine && city) {
+    return `${streetLine}, ${city}, ${state}`;
+  }
+  if (streetLine) {
+    return `${streetLine}, ${state}`;
+  }
+
+  // Fallback: display_name uses "3400, Fox Run Rd, ..." — strip comma after house number.
+  const parts = String(item.display_name || '')
+    .split(',')
+    .map(p => p.trim())
+    .filter(Boolean)
+    .slice(0, 3);
+  if (parts.length >= 2 && /^\d+[A-Z]?$/i.test(parts[0])) {
+    parts[0] = `${parts[0]} ${parts[1]}`;
+    parts.splice(1, 1);
+  }
+  return parts.join(', ');
+}
+
 async function suggestNominatim(query) {
   const response = await axios.get('https://nominatim.openstreetmap.org/search', {
     params: {
@@ -70,10 +107,12 @@ async function suggestNominatim(query) {
     timeout: 10000,
   });
 
-  return (response.data || []).map(item => ({
-    address: item.display_name.split(',').slice(0, 3).join(', '),
-    source: 'nominatim',
-  }));
+  return (response.data || [])
+    .map(item => ({
+      address: formatNominatimAddress(item),
+      source: 'nominatim',
+    }))
+    .filter(item => item.address.length > 0);
 }
 
 router.get('/', async (req, res) => {
