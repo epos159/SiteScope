@@ -31,27 +31,11 @@
   text-decoration: none;
 }
 
-.app-header-logo {
-  font-size: 22px;
-  color: var(--color-accent);
-  line-height: 1;
-}
-
-.app-header-name {
+.app-header-logo-img {
   display: block;
-  font-size: var(--font-size-lg);
-  font-weight: 700;
-  color: #fff;
-  letter-spacing: -0.02em;
-  line-height: 1.1;
-}
-
-.app-header-by {
-  display: block;
-  font-size: var(--font-size-xs);
-  color: rgba(255, 255, 255, 0.45);
-  font-weight: 400;
-  letter-spacing: 0.02em;
+  height: 44px;
+  width: auto;
+  border-radius: 6px;
 }
 
 .app-header-search {
@@ -105,6 +89,14 @@
   line-height: 1;
 }
 
+.app-empty-logo {
+  display: block;
+  width: min(100%, 360px);
+  height: auto;
+  margin: 0 auto 24px;
+  border-radius: 8px;
+}
+
 .app-empty-inner h2 {
   font-size: var(--font-size-xl);
   font-weight: 600;
@@ -147,8 +139,8 @@
     gap: 10px;
   }
 
-  .app-header-by {
-    display: none;
+  .app-header-logo-img {
+    height: 34px;
   }
 
   .app-map-section {

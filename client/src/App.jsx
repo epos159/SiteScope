@@ -30,11 +30,11 @@ export default function App() {
       {/* ── Header ── */}
       <header className="app-header">
         <div className="app-header-brand">
-          <span className="app-header-logo">⬡</span>
-          <div>
-            <span className="app-header-name">SiteScope</span>
-            <span className="app-header-by">by Posch Ventures</span>
-          </div>
+          <img
+            src="/sitescope_logo.png"
+            alt="SiteScope — Pre-Construction Site Research"
+            className="app-header-logo-img"
+          />
         </div>
 
         <div className="app-header-search">
@@ -84,7 +84,12 @@ export default function App() {
       {state.status === 'idle' && (
         <div className="app-empty">
           <div className="app-empty-inner">
-            <div className="app-empty-icon">🗺️</div>
+            <img
+              src="/sitescope_logo.png"
+              alt=""
+              className="app-empty-logo"
+              aria-hidden="true"
+            />
             <h2>Search a Pennsylvania address to begin</h2>
             <p>
               SiteScope aggregates parcel data, FEMA flood zones, soils, topography, building
