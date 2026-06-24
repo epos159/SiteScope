@@ -101,6 +101,15 @@
   cursor: not-allowed;
 }
 
+.search-bar-btn-cancel {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+.search-bar-btn-cancel:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
 .search-suggestions {
   position: absolute;
   top: calc(100% + 6px);

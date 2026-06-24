@@ -1,4 +1,5 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
+import axios from 'axios';
 import * as api from '../services/api';
 import { getFeatureCentroid } from '../utils/geo';
 import { inferCountyKey } from '../utils/county';
@@ -15,13 +16,35 @@ const initialState = {
   wetlands: null,
 };
 
-async function loadAllData(lat, lng, countyKey, searchedAddress, setState) {
-  // ── Parcel (serial — geometry used downstream) ─────────────
+function isAbortError(err) {
+  return axios.isCancel(err) || err?.code === 'ERR_CANCELED';
+}
+
+async function loadLayer(key, fetcher, setState, isStale) {
+  try {
+    const value = await fetcher();
+    if (isStale()) return;
+    setState(prev => ({ ...prev, [key]: value }));
+  } catch (err) {
+    if (isAbortError(err) || isStale()) return;
+    setState(prev => ({
+      ...prev,
+      [key]: { error: true, message: 'Unavailable.' },
+    }));
+  }
+}
+
+async function loadAllData(lat, lng, countyKey, searchedAddress, setState, { signal, isStale }) {
+  const requestOptions = { signal };
+
+  // Parcel first — geometry feeds centroid for downstream queries.
   let parcel = null;
   try {
-    parcel = await api.getParcels(lat, lng, countyKey, searchedAddress);
+    parcel = await api.getParcels(lat, lng, countyKey, searchedAddress, requestOptions);
+    if (isStale()) return;
     setState(prev => ({ ...prev, parcel }));
-  } catch {
+  } catch (err) {
+    if (isAbortError(err) || isStale()) return;
     parcel = { error: true, message: 'Parcel data unavailable.' };
     setState(prev => ({ ...prev, parcel }));
   }
@@ -31,28 +54,19 @@ async function loadAllData(lat, lng, countyKey, searchedAddress, setState) {
   const queryLat = centroid?.lat ?? lat;
   const queryLng = centroid?.lng ?? lng;
 
-  // ── All remaining data in parallel ────────────────────────
-  const [floodResult, soilResult, buildingsResult, elevationResult, wetlandsResult] =
-    await Promise.allSettled([
-      api.getFlood(queryLat, queryLng),
-      api.getSoil(queryLat, queryLng, geometry),
-      api.getBuildings(queryLat, queryLng, geometry),
-      api.getElevation(queryLat, queryLng, geometry),
-      api.getWetlands(queryLat, queryLng, geometry),
-    ]);
+  // Fire all layer requests in parallel; update each card as its response arrives.
+  // Fast layers (flood, elevation, wetlands) typically render before slow ones (soil, buildings).
+  await Promise.all([
+    loadLayer('flood', () => api.getFlood(queryLat, queryLng, requestOptions), setState, isStale),
+    loadLayer('elevation', () => api.getElevation(queryLat, queryLng, geometry, requestOptions), setState, isStale),
+    loadLayer('wetlands', () => api.getWetlands(queryLat, queryLng, geometry, requestOptions), setState, isStale),
+    loadLayer('soil', () => api.getSoil(queryLat, queryLng, geometry, requestOptions), setState, isStale),
+    loadLayer('buildings', () => api.getBuildings(queryLat, queryLng, geometry, requestOptions), setState, isStale),
+  ]);
 
-  const resolve = result =>
-    result.status === 'fulfilled' ? result.value : { error: true, message: 'Unavailable.' };
-
-  setState(prev => ({
-    ...prev,
-    status: 'done',
-    flood: resolve(floodResult),
-    soil: resolve(soilResult),
-    buildings: resolve(buildingsResult),
-    elevation: resolve(elevationResult),
-    wetlands: resolve(wetlandsResult),
-  }));
+  if (!isStale()) {
+    setState(prev => ({ ...prev, status: 'done' }));
+  }
 }
 
 /**
@@ -60,6 +74,25 @@ async function loadAllData(lat, lng, countyKey, searchedAddress, setState) {
  */
 export function useSiteData() {
   const [state, setState] = useState(initialState);
+  const abortRef = useRef(null);
+  const searchGenRef = useRef(0);
+
+  const beginSearch = useCallback(() => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const generation = ++searchGenRef.current;
+    const isStale = () => generation !== searchGenRef.current;
+
+    return { signal: controller.signal, isStale };
+  }, []);
+
+  const cancelSearch = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    searchGenRef.current += 1;
+    setState(initialState);
+  }, []);
 
   /**
    * Search by typed address — geocodes first, then loads all data.
@@ -67,21 +100,31 @@ export function useSiteData() {
   const search = useCallback(async address => {
     if (!address?.trim()) return;
 
+    const { signal, isStale } = beginSearch();
     setState({ ...initialState, status: 'loading' });
 
     let location;
     try {
-      location = await api.geocode(address);
+      location = await api.geocode(address, { signal });
+      if (isStale()) return;
       setState(prev => ({ ...prev, location }));
     } catch (err) {
+      if (isAbortError(err) || isStale()) return;
       const msg = err.response?.data?.error || 'Could not geocode address. Please try again.';
       setState(prev => ({ ...prev, status: 'error', errorMessage: msg }));
       return;
     }
 
     const { lat, lng, countyKey } = location;
-    await loadAllData(lat, lng, countyKey, location.searchedAddress || address.trim(), setState);
-  }, []);
+    await loadAllData(
+      lat,
+      lng,
+      countyKey,
+      location.searchedAddress || address.trim(),
+      setState,
+      { signal, isStale }
+    );
+  }, [beginSearch]);
 
   /**
    * Search by known coordinates — used when clicking a neighbor parcel.
@@ -89,6 +132,7 @@ export function useSiteData() {
    */
   const searchByCoords = useCallback(async (lat, lng, countyKey, ownerLabel) => {
     const effectiveCountyKey = countyKey || inferCountyKey(lat, lng);
+    const { signal, isStale } = beginSearch();
 
     setState(prev => ({
       ...initialState,
@@ -104,8 +148,8 @@ export function useSiteData() {
       },
     }));
 
-    await loadAllData(lat, lng, effectiveCountyKey, null, setState);
-  }, []);
+    await loadAllData(lat, lng, effectiveCountyKey, null, setState, { signal, isStale });
+  }, [beginSearch]);
 
-  return { state, search, searchByCoords };
+  return { state, search, searchByCoords, cancelSearch };
 }

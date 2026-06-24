@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { suggestAddresses } from '../../services/api';
 import './SearchBar.css';
 
-export default function SearchBar({ onSearch, isLoading }) {
+export default function SearchBar({ onSearch, onCancel, isLoading }) {
   const [value, setValue] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [open, setOpen] = useState(false);
@@ -14,14 +14,21 @@ export default function SearchBar({ onSearch, isLoading }) {
   const runSearch = useCallback(
     address => {
       const trimmed = address.trim();
-      if (!trimmed || isLoading) return;
+      if (!trimmed) return;
       setOpen(false);
       setSuggestions([]);
       setActiveIndex(-1);
       onSearch(trimmed);
     },
-    [isLoading, onSearch]
+    [onSearch]
   );
+
+  const handleCancel = () => {
+    setOpen(false);
+    setSuggestions([]);
+    setActiveIndex(-1);
+    onCancel?.();
+  };
 
   const handleSubmit = e => {
     e.preventDefault();
@@ -118,7 +125,6 @@ export default function SearchBar({ onSearch, isLoading }) {
           onChange={e => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
           onFocus={() => suggestions.length > 0 && setOpen(true)}
-          disabled={isLoading}
           autoComplete="off"
           spellCheck={false}
           aria-label="Search address"
@@ -135,6 +141,7 @@ export default function SearchBar({ onSearch, isLoading }) {
               setValue('');
               setSuggestions([]);
               setOpen(false);
+              if (isLoading) handleCancel();
             }}
             aria-label="Clear"
           >
@@ -142,14 +149,25 @@ export default function SearchBar({ onSearch, isLoading }) {
           </button>
         )}
 
-        <button
-          type="submit"
-          className="search-bar-btn"
-          disabled={isLoading || !value.trim()}
-          aria-label="Search"
-        >
-          {isLoading ? 'Searching…' : 'Search'}
-        </button>
+        {isLoading ? (
+          <button
+            type="button"
+            className="search-bar-btn search-bar-btn-cancel"
+            onClick={handleCancel}
+            aria-label="Cancel search"
+          >
+            Cancel
+          </button>
+        ) : (
+          <button
+            type="submit"
+            className="search-bar-btn"
+            disabled={!value.trim()}
+            aria-label="Search"
+          >
+            Search
+          </button>
+        )}
       </form>
 
       {open && suggestions.length > 0 && (

@@ -7,7 +7,7 @@ import { useSiteData } from './hooks/useSiteData';
 import './App.css';
 
 export default function App() {
-  const { state, search, searchByCoords } = useSiteData();
+  const { state, search, searchByCoords, cancelSearch } = useSiteData();
   const mapRef = useRef(null);
   const dataPanelRef = useRef(null);
 
@@ -38,7 +38,11 @@ export default function App() {
         </div>
 
         <div className="app-header-search">
-          <SearchBar onSearch={handleSearch} isLoading={state.status === 'loading'} />
+          <SearchBar
+            onSearch={handleSearch}
+            onCancel={cancelSearch}
+            isLoading={state.status === 'loading'}
+          />
         </div>
 
         <div className="app-header-actions">
