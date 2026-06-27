@@ -2,7 +2,7 @@ import { useState, useCallback, useRef } from 'react';
 import axios from 'axios';
 import * as api from '../services/api';
 import { getFeatureCentroid } from '../utils/geo';
-import { inferCountyKey } from '../utils/county';
+import { inferCountyKey, getCountyDisplayName } from '../utils/county';
 
 const initialState = {
   status: 'idle', // 'idle' | 'loading' | 'done' | 'error'
@@ -141,7 +141,7 @@ export function useSiteData() {
         lat,
         lng,
         countyKey: effectiveCountyKey,
-        county: prev.location?.county || (effectiveCountyKey === 'york' ? 'York County' : effectiveCountyKey === 'adams' ? 'Adams County' : ''),
+        county: prev.location?.county || getCountyDisplayName(effectiveCountyKey) || '',
         state: prev.location?.state || 'Pennsylvania',
         displayName: ownerLabel || `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
         municipality: '',

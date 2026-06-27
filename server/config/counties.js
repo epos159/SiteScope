@@ -140,7 +140,106 @@ const COUNTIES = {
       siteAddress: 'COMBINED_SITUS',
     },
   },
+
+  lancaster: {
+    name: 'Lancaster County',
+    state: 'Pennsylvania',
+    parcelEndpoint:
+      'https://arcgis.lancastercountypa.gov/arcgis/rest/services/Parcels_app/FeatureServer/0/query',
+    fields: {
+      ownerName: 'OWNER_NAME',
+      ownerName2: null,
+      parcelId: 'PIN',
+      acreage: null,
+      acreageDirect: 'DEED_ACRES',
+      municipality: null,
+      siteAddress: 'ADDRESS',
+    },
+    acreageFromShapeArea: false,
+    addressSearch: {
+      siteAddress: 'ADDRESS',
+      streetNumber: 'HOUSE_NO',
+      streetName: 'STREET_NAME',
+      streetNumberIsString: true,
+    },
+  },
+
+  cumberland: {
+    name: 'Cumberland County',
+    state: 'Pennsylvania',
+    // Official CCPA assessment layer — PASDA copy is geometry-only (no owner/address).
+    parcelEndpoint:
+      'https://gis.ccpa.net/arcgiswebadaptor/rest/services/Property_Assessment/Parcels_Basemap/MapServer/42/query',
+    fields: {
+      ownerName: 'OWNER',
+      ownerName2: null,
+      parcelId: 'PIN',
+      acreage: null,
+      acreageDirect: 'DEEDED_AC',
+      municipality: 'MUNI_NAME',
+      siteAddress: 'SITUS',
+    },
+    acreageFromShapeArea: false,
+    addressSearch: {
+      siteAddress: 'SITUS',
+    },
+  },
+
+  dauphin: {
+    name: 'Dauphin County',
+    state: 'Pennsylvania',
+    parcelEndpoint:
+      'https://mapservices.pasda.psu.edu/server/rest/services/pasda/DauphinCounty/MapServer/0/query',
+    fields: {
+      ownerName: null,
+      ownerNameParts: ['first_name', 'last_name'],
+      ownerName2: null,
+      parcelId: 'PID',
+      acreage: null,
+      acreageDirect: 'acres',
+      municipality: 'MUNICIPALI',
+      siteAddress: 'address1',
+    },
+    acreageFromShapeArea: false,
+    addressSearch: {
+      siteAddress: 'address1',
+      streetNumber: 'house_numb',
+      streetName: 'street_nam',
+      streetNumberIsString: true,
+    },
+  },
+
+  franklin: {
+    name: 'Franklin County',
+    state: 'Pennsylvania',
+    parcelEndpoint:
+      'https://mapservices.pasda.psu.edu/server/rest/services/pasda/FranklinCounty/MapServer/0/query',
+    fields: {
+      ownerName: 'FULL_OWNER',
+      ownerName2: null,
+      parcelId: 'CONTROL_NU',
+      acreage: null,
+      acreageDirect: 'BASE_ACRES',
+      municipality: null,
+      siteAddress: 'FULL_SITUS',
+    },
+    acreageFromShapeArea: false,
+    addressSearch: {
+      siteAddress: 'SITUSAddre',
+      alternateStreetName: 'FULL_SITUS',
+    },
+  },
 };
+
+/** Approximate bounds for inferCountyKeyFromCoords (checked in order). */
+const COUNTY_BOUNDS = [
+  { key: 'franklin', minLat: 39.72, maxLat: 40.05, minLng: -78.05, maxLng: -77.18 },
+  { key: 'adams', minLat: 39.68, maxLat: 40.12, minLng: -77.58, maxLng: -76.72 },
+  { key: 'cumberland', minLat: 39.93, maxLat: 40.33, minLng: -77.58, maxLng: -76.82 },
+  { key: 'dauphin', minLat: 40.10, maxLat: 40.65, minLng: -77.08, maxLng: -76.42 },
+  { key: 'lancaster', minLat: 39.72, maxLat: 40.17, minLng: -76.52, maxLng: -75.85 },
+  { key: 'york', minLat: 39.72, maxLat: 40.18, minLng: -77.15, maxLng: -76.42 },
+];
 
 /**
  * Given a county name string from reverse geocoding (e.g. "York County"),
@@ -163,17 +262,28 @@ function inferCountyKeyFromCoords(lat, lng) {
   const lngF = parseFloat(lng);
   if (Number.isNaN(latF) || Number.isNaN(lngF)) return null;
 
-  // York County, PA (approximate bounds)
-  if (latF >= 39.72 && latF <= 40.18 && lngF >= -77.15 && lngF <= -76.35) {
-    return 'york';
-  }
-
-  // Adams County, PA (approximate bounds)
-  if (latF >= 39.68 && latF <= 40.12 && lngF >= -77.55 && lngF <= -76.75) {
-    return 'adams';
+  for (const bounds of COUNTY_BOUNDS) {
+    if (
+      latF >= bounds.minLat &&
+      latF <= bounds.maxLat &&
+      lngF >= bounds.minLng &&
+      lngF <= bounds.maxLng
+    ) {
+      return bounds.key;
+    }
   }
 
   return null;
 }
 
-module.exports = { COUNTIES, resolveCountyKey, inferCountyKeyFromCoords };
+function getSupportedCountyNames() {
+  return Object.values(COUNTIES).map(c => c.name);
+}
+
+module.exports = {
+  COUNTIES,
+  COUNTY_BOUNDS,
+  resolveCountyKey,
+  inferCountyKeyFromCoords,
+  getSupportedCountyNames,
+};

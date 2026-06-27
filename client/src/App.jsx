@@ -4,6 +4,7 @@ import MapView from './components/Map/MapView';
 import DataPanel from './components/DataPanel/DataPanel';
 import ExportPanel from './components/Export/ExportPanel';
 import { useSiteData } from './hooks/useSiteData';
+import { SUPPORTED_COUNTIES } from './utils/county';
 import './App.css';
 
 export default function App() {
@@ -100,8 +101,11 @@ export default function App() {
               footprints, and wetlands into a single pre-construction research report.
             </p>
             <div className="app-empty-counties">
-              <span className="badge badge-info">York County</span>
-              <span className="badge badge-info">Adams County</span>
+              {SUPPORTED_COUNTIES.map(name => (
+                <span key={name} className="badge badge-info">
+                  {name}
+                </span>
+              ))}
               <span className="badge badge-neutral">More counties coming soon</span>
             </div>
           </div>

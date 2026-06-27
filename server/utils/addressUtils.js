@@ -77,6 +77,13 @@ function buildAddressWhereClause(searchAddress, addressSearch) {
   return strategies[0] || null;
 }
 
+function formatStreetNumberExpr(numField, num, addressSearch) {
+  if (addressSearch.streetNumberIsString) {
+    return `${numField} = '${escapeArcGIS(String(num))}'`;
+  }
+  return `${numField} = ${num}`;
+}
+
 /**
  * Build multiple WHERE clause strategies from strict to relaxed.
  * Spatial envelope around the geocode point should always accompany these.
@@ -89,6 +96,7 @@ function buildAddressWhereClauses(searchAddress, addressSearch) {
   if (Number.isNaN(num)) return [];
 
   const numField = addressSearch.streetNumber || 'STRTNUMB';
+  const numExpr = formatStreetNumberExpr(numField, num, addressSearch);
   const tokens = parsed.streetName.split(/\s+/).filter(t => t.length > 1);
   const fullTokens = parsed.streetNameFull.split(/\s+/).filter(t => t.length > 1);
   const searchFields = getAddressSearchFields(addressSearch);
@@ -102,7 +110,7 @@ function buildAddressWhereClauses(searchAddress, addressSearch) {
 
   // 1. Strict: house number + every significant street token
   if (searchFields.length > 0 && allTokens.length > 0) {
-    const strictParts = [`${numField} = ${num}`];
+    const strictParts = [numExpr];
     for (const token of allTokens.slice(0, 4)) {
       const streetClauses = searchFields.map(
         field => `UPPER(${field}) LIKE '%${escapeArcGIS(token)}%'`
@@ -118,7 +126,7 @@ function buildAddressWhereClauses(searchAddress, addressSearch) {
     const streetClauses = searchFields.map(
       field => `UPPER(${field}) LIKE '%${escapeArcGIS(primary)}%'`
     );
-    clauses.push(`${numField} = ${num} AND (${streetClauses.join(' OR ')})`);
+    clauses.push(`${numExpr} AND (${streetClauses.join(' OR ')})`);
   }
 
   // 3. Full street line tokens in ADDRESS (keeps suffix words like COURT)
@@ -136,7 +144,7 @@ function buildAddressWhereClauses(searchAddress, addressSearch) {
   // 4. VIS street fields (York County normalized components)
   if (addressSearch.visStreetNumber && addressSearch.visStreetName && tokens.length > 0) {
     clauses.push(
-      `${addressSearch.visStreetNumber} = ${num} AND UPPER(${addressSearch.visStreetName}) LIKE '%${escapeArcGIS(tokens[0])}%'`
+      `${formatStreetNumberExpr(addressSearch.visStreetNumber, num, addressSearch)} AND UPPER(${addressSearch.visStreetName}) LIKE '%${escapeArcGIS(tokens[0])}%'`
     );
   }
 

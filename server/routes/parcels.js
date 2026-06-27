@@ -1,6 +1,6 @@
 const express = require('express');
 const axios = require('axios');
-const { COUNTIES, inferCountyKeyFromCoords } = require('../config/counties');
+const { COUNTIES, inferCountyKeyFromCoords, getSupportedCountyNames } = require('../config/counties');
 const { getBoundingBox, bboxToEsriEnvelope, getGeometryCentroid } = require('../utils/geoUtils');
 const {
   buildAddressWhereClauses,
@@ -37,8 +37,18 @@ function normalizeParcelProps(props, county, fields) {
     municipality = county.districtLookup[code] || null;
   }
 
+  let ownerName = fields.ownerName ? props[fields.ownerName] || null : null;
+  if (!ownerName && fields.ownerNameParts?.length) {
+    ownerName =
+      fields.ownerNameParts
+        .map(part => props[part])
+        .filter(value => value != null && String(value).trim())
+        .join(' ')
+        .trim() || null;
+  }
+
   return {
-    ownerName: props[fields.ownerName] || null,
+    ownerName,
     ownerName2: fields.ownerName2 ? props[fields.ownerName2] || null : null,
     parcelId: props[fields.parcelId] || null,
     acreage,
@@ -92,7 +102,7 @@ async function fetchParcelByAddressGeneric(searchAddress, county, endpoint, fiel
 }
 
 async function fetchParcelNearPointGeneric(lat, lng, county, endpoint, fields, searchAddress, addressSearch) {
-  const data = await queryArcGIS(endpoint, {
+  const pointParams = {
     geometry: JSON.stringify({ x: parseFloat(lng), y: parseFloat(lat) }),
     geometryType: 'esriGeometryPoint',
     inSR: 4326,
@@ -100,9 +110,33 @@ async function fetchParcelNearPointGeneric(lat, lng, county, endpoint, fields, s
     outFields: '*',
     returnGeometry: true,
     resultRecordCount: 25,
-  });
+  };
 
-  const candidates = data.features || [];
+  let data = await queryArcGIS(endpoint, pointParams);
+  let candidates = data.features || [];
+
+  // Some county services (e.g. Lancaster) miss point-intersect queries — retry with a small envelope.
+  if (!candidates.length) {
+    const buffer = 0.0004;
+    const lngF = parseFloat(lng);
+    const latF = parseFloat(lat);
+    data = await queryArcGIS(endpoint, {
+      geometry: JSON.stringify({
+        xmin: lngF - buffer,
+        ymin: latF - buffer,
+        xmax: lngF + buffer,
+        ymax: latF + buffer,
+      }),
+      geometryType: 'esriGeometryEnvelope',
+      inSR: 4326,
+      spatialRel: 'esriSpatialRelIntersects',
+      outFields: '*',
+      returnGeometry: true,
+      resultRecordCount: 25,
+    });
+    candidates = data.features || [];
+  }
+
   if (!candidates.length) return null;
 
   const best = pickBestParcelMatch(
@@ -208,7 +242,7 @@ router.get('/', async (req, res) => {
   if (!effectiveCountyKey || !COUNTIES[effectiveCountyKey]) {
     return res.json({
       supported: false,
-      message: `Parcel data is currently available for York and Adams County, PA. Support for additional counties is coming soon.`,
+      message: `Parcel data is currently available for ${getSupportedCountyNames().join(', ')}. Support for additional counties is coming soon.`,
       feature: null,
       neighbors: [],
     });
