@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import Papa from 'papaparse';
+import { DISCLAIMER_FULL } from '../../constants/disclaimer';
 import './ExportPanel.css';
 
 async function captureElement(el) {
@@ -72,14 +73,18 @@ async function exportPDF({ address, mapRef, dataPanelRef }) {
     }
   }
 
-  // Footer
+  // Footer with disclaimer on every page
   const totalPages = pdf.internal.getNumberOfPages();
+  const footerH = 52;
   for (let i = 1; i <= totalPages; i++) {
     pdf.setPage(i);
     pdf.setFillColor(240, 242, 245);
-    pdf.rect(0, pageH - 28, pageW, 28, 'F');
+    pdf.rect(0, pageH - footerH, pageW, footerH, 'F');
     pdf.setTextColor(100, 116, 139);
     pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(7);
+    const disclaimerLines = pdf.splitTextToSize(DISCLAIMER_FULL, contentW);
+    pdf.text(disclaimerLines, margin, pageH - footerH + 12);
     pdf.setFontSize(8);
     pdf.text('SiteScope by Posch Ventures — poschventures.com', margin, pageH - 10);
     pdf.text(`Page ${i} of ${totalPages}`, pageW - margin, pageH - 10, { align: 'right' });

@@ -5,6 +5,7 @@ import DataPanel from './components/DataPanel/DataPanel';
 import ExportPanel from './components/Export/ExportPanel';
 import { useSiteData } from './hooks/useSiteData';
 import { SUPPORTED_COUNTIES } from './utils/county';
+import { DISCLAIMER_SHORT } from './constants/disclaimer';
 import './App.css';
 
 export default function App() {
@@ -124,9 +125,12 @@ export default function App() {
       )}
 
       <footer className="app-footer">
-        SiteScope by Posch Ventures &nbsp;·&nbsp;{' '}
-        <a href="mailto:support@poschventures.com">support@poschventures.com</a>
-        &nbsp;·&nbsp; poschventures.com
+        <p className="app-footer-disclaimer">{DISCLAIMER_SHORT}</p>
+        <p className="app-footer-meta">
+          SiteScope by Posch Ventures &nbsp;·&nbsp;{' '}
+          <a href="mailto:support@poschventures.com">support@poschventures.com</a>
+          &nbsp;·&nbsp; poschventures.com
+        </p>
       </footer>
     </div>
   );
