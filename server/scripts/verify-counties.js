@@ -108,7 +108,7 @@ const CASES = [
   { key: 'adams', lat: 39.830, lng: -77.231, address: '1 Lincoln Sq, Gettysburg, PA' },
   { key: 'lancaster', lat: 40.0379, lng: -76.3055, address: '1 N Queen St, Lancaster, PA' },
   { key: 'lancaster', lat: 40.042, lng: -76.305, address: '124 E King St, Lancaster, PA' },
-  { key: 'cumberland', lat: 40.201, lng: -77.189, address: '1 Courthouse Sq, Carlisle, PA' },
+  { key: 'cumberland', lat: 40.201, lng: -77.189, address: '1 Courthouse Square, Carlisle, PA' },
   { key: 'dauphin', lat: 40.260, lng: -76.884, address: '2 N 2nd St, Harrisburg, PA' },
   { key: 'franklin', lat: 39.937, lng: -77.661, address: '20 S Main St, Chambersburg, PA' },
 ];

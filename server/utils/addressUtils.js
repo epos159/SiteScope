@@ -97,6 +97,7 @@ function buildAddressWhereClauses(searchAddress, addressSearch) {
 
   const numField = addressSearch.streetNumber || 'STRTNUMB';
   const numExpr = formatStreetNumberExpr(numField, num, addressSearch);
+  const hasStructuredStreet = Boolean(addressSearch.streetNumber);
   const tokens = parsed.streetName.split(/\s+/).filter(t => t.length > 1);
   const fullTokens = parsed.streetNameFull.split(/\s+/).filter(t => t.length > 1);
   const searchFields = getAddressSearchFields(addressSearch);
@@ -121,7 +122,7 @@ function buildAddressWhereClauses(searchAddress, addressSearch) {
   }
 
   // 1. Strict: house number + every significant street token
-  if (searchFields.length > 0 && allTokens.length > 0) {
+  if (hasStructuredStreet && searchFields.length > 0 && allTokens.length > 0) {
     const strictParts = [numExpr];
     for (const token of allTokens.slice(0, 4)) {
       const streetClauses = searchFields.map(
@@ -133,7 +134,7 @@ function buildAddressWhereClauses(searchAddress, addressSearch) {
   }
 
   // 2. House number + primary street token only
-  if (searchFields.length > 0 && allTokens.length > 0) {
+  if (hasStructuredStreet && searchFields.length > 0 && allTokens.length > 0) {
     const primary = tokens[0] || allTokens[0];
     const streetClauses = searchFields.map(
       field => `UPPER(${field}) LIKE '%${escapeArcGIS(primary)}%'`

@@ -1,9 +1,10 @@
 import React from 'react';
 import './DataPanel.css';
 
-export default function ParcelCard({ data, isLoading, onNeighborClick }) {
+export default function ParcelCard({ data, isLoading, location, onNeighborClick }) {
   const props = data?.feature?.properties;
   const neighbors = data?.neighbors || [];
+  const hadAddressSearch = Boolean(location?.searchedAddress?.trim());
 
   return (
     <div className="data-card">
@@ -33,13 +34,23 @@ export default function ParcelCard({ data, isLoading, onNeighborClick }) {
           </p>
         )}
 
-        {!isLoading && data?.matchMethod === 'point' && (
+        {!isLoading && hadAddressSearch && data?.matchMethod === 'point' && data?.matchConfidence === 'low' && (
           <p className="parcel-match-note parcel-match-note--warn">
             Could not confidently match your searched address. Showing the nearest county parcel
             {props?.siteAddress ? (
               <> (<strong>{props.siteAddress}</strong>)</>
             ) : null}
             . Click the correct parcel on the map if this owner looks wrong.
+          </p>
+        )}
+
+        {!isLoading && hadAddressSearch && data?.matchMethod === 'point' && data?.matchConfidence === 'medium' && (
+          <p className="parcel-match-note">
+            Matched the parcel at the map pin
+            {props?.siteAddress ? (
+              <> (<strong>{props.siteAddress}</strong>)</>
+            ) : null}
+            . Verify this is the correct lot if the owner looks unexpected.
           </p>
         )}
 

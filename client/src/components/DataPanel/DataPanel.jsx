@@ -26,7 +26,7 @@ export default function DataPanel({ state, onNeighborClick }) {
       </div>
 
       <div className="data-panel-grid">
-        <ParcelCard data={parcel} isLoading={isLoading && !parcel} onNeighborClick={onNeighborClick} />
+        <ParcelCard data={parcel} isLoading={isLoading && !parcel} location={location} onNeighborClick={onNeighborClick} />
         <FloodCard data={flood} isLoading={isLoading && !flood} />
         <SoilCard data={soil} isLoading={isLoading && !soil} />
         <TopographyCard data={elevation} isLoading={isLoading && !elevation} />
