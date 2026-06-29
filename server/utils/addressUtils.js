@@ -101,12 +101,24 @@ function buildAddressWhereClauses(searchAddress, addressSearch) {
   const fullTokens = parsed.streetNameFull.split(/\s+/).filter(t => t.length > 1);
   const searchFields = getAddressSearchFields(addressSearch);
   const clauses = [];
+  const dirMatch = parsed.streetLine.match(/\b(N|S|E|W|NE|NW|SE|SW)\b/i);
+  const streetDir = dirMatch ? dirMatch[1].toUpperCase() : null;
 
   const extraTokens = new Set(tokens);
   for (const token of [...tokens, ...fullTokens]) {
     if (SUFFIX_ABBREV[token]) extraTokens.add(SUFFIX_ABBREV[token]);
   }
   const allTokens = [...extraTokens];
+
+  // 0. Structured components: house number + street name (+ optional direction)
+  if (addressSearch.streetNumber && addressSearch.streetName && tokens.length > 0) {
+    const primary = tokens[0] || allTokens[0];
+    let structured = `${numExpr} AND UPPER(${addressSearch.streetName}) LIKE '%${escapeArcGIS(primary)}%'`;
+    if (streetDir && addressSearch.streetDir) {
+      structured += ` AND UPPER(${addressSearch.streetDir}) = '${escapeArcGIS(streetDir)}'`;
+    }
+    clauses.push(structured);
+  }
 
   // 1. Strict: house number + every significant street token
   if (searchFields.length > 0 && allTokens.length > 0) {
@@ -130,10 +142,11 @@ function buildAddressWhereClauses(searchAddress, addressSearch) {
   }
 
   // 3. Full street line tokens in ADDRESS (keeps suffix words like COURT)
-  if (addressSearch.siteAddress && fullTokens.length > 0) {
+  if (addressSearch.siteAddress && fullTokens.length > 0 && !addressSearch.streetNumber) {
     const addrField = addressSearch.siteAddress;
+    const num = escapeArcGIS(parsed.streetNumber);
     const parts = [
-      `UPPER(${addrField}) LIKE '%${escapeArcGIS(parsed.streetNumber)}%'`,
+      `(UPPER(${addrField}) LIKE '${num} %' OR UPPER(${addrField}) LIKE '% ${num} %')`,
     ];
     for (const token of fullTokens.slice(0, 3)) {
       parts.push(`UPPER(${addrField}) LIKE '%${escapeArcGIS(token)}%'`);
@@ -148,10 +161,12 @@ function buildAddressWhereClauses(searchAddress, addressSearch) {
     );
   }
 
-  // 5. Loose ADDRESS contains number + first token (spatial filter does the rest)
-  if (addressSearch.siteAddress && tokens.length > 0) {
+  // 5. Loose ADDRESS contains number + first token (only when no structured house-number field)
+  if (addressSearch.siteAddress && tokens.length > 0 && !addressSearch.streetNumber) {
+    const addrField = addressSearch.siteAddress;
+    const num = escapeArcGIS(parsed.streetNumber);
     clauses.push(
-      `UPPER(${addressSearch.siteAddress}) LIKE '%${escapeArcGIS(parsed.streetNumber)}%' AND UPPER(${addressSearch.siteAddress}) LIKE '%${escapeArcGIS(tokens[0])}%'`
+      `(UPPER(${addrField}) LIKE '${num} %' OR UPPER(${addrField}) LIKE '% ${num} %') AND UPPER(${addrField}) LIKE '%${escapeArcGIS(tokens[0])}%'`
     );
   }
 
@@ -238,6 +253,23 @@ function scoreParcelAddressMatch(searchAddress, feature, addressSearch) {
   for (const field of getAddressSearchFields(addressSearch)) {
     const score = scoreAddressMatch(searchAddress, props[field]);
     if (score > best) best = score;
+  }
+
+  if (addressSearch.streetNumber && addressSearch.streetName) {
+    const parts = [
+      addressSearch.streetNumber,
+      addressSearch.streetDir,
+      addressSearch.streetName,
+      addressSearch.streetSuffix,
+    ].filter(Boolean);
+    const composed = parts
+      .map(part => props[part])
+      .filter(value => value != null && String(value).trim())
+      .join(' ');
+    if (composed) {
+      const score = scoreAddressMatch(searchAddress, composed);
+      if (score > best) best = score;
+    }
   }
 
   return best;

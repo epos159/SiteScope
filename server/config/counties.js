@@ -7,6 +7,8 @@
  * fields: maps normalized property names to the county GIS layer's actual field names.
  */
 
+const lancasterDistrictLookup = require('./lancasterDistricts');
+
 const COUNTIES = {
   york: {
     name: 'York County',
@@ -153,13 +155,19 @@ const COUNTIES = {
       acreage: null,
       acreageDirect: 'DEED_ACRES',
       municipality: null,
+      districtField: 'DISTRICT',
       siteAddress: 'ADDRESS',
+      siteAddressParts: ['HOUSE_NO', 'STREET_DIR', 'STREET_NAME', 'STREET_SFX'],
     },
+    districtPadLength: 3,
+    districtLookup: lancasterDistrictLookup,
     acreageFromShapeArea: false,
     addressSearch: {
       siteAddress: 'ADDRESS',
       streetNumber: 'HOUSE_NO',
       streetName: 'STREET_NAME',
+      streetDir: 'STREET_DIR',
+      streetSuffix: 'STREET_SFX',
       streetNumberIsString: true,
     },
   },

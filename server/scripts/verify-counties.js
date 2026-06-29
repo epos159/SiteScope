@@ -4,7 +4,7 @@
  */
 const axios = require('axios');
 const { COUNTIES } = require('../config/counties');
-const { buildAddressWhereClauses } = require('../utils/addressUtils');
+const { buildAddressWhereClauses, scoreParcelAddressMatch } = require('../utils/addressUtils');
 
 const TIMEOUT = 30000;
 
@@ -24,26 +24,37 @@ async function resolveCounty(countyKey, lat, lng, address) {
 
   if (address && addressSearch) {
     const strategies = buildAddressWhereClauses(address, addressSearch);
+    let best = null;
+    let bestScore = 0;
     for (const where of strategies) {
       try {
         const data = await queryArcGIS(endpoint, {
           where,
           outFields: '*',
           returnGeometry: true,
-          resultRecordCount: 5,
+          resultRecordCount: 50,
         });
-        if (data.features?.length) {
-          const props = data.features[0].properties || {};
-          return {
-            method: 'address',
-            owner: props[fields.ownerName] || [fields.ownerNameParts?.map(p => props[p]).join(' ')].filter(Boolean)[0],
-            parcelId: props[fields.parcelId],
-            siteAddress: props[fields.siteAddress],
-          };
+        for (const feature of data.features || []) {
+          const score = scoreParcelAddressMatch(address, feature, addressSearch);
+          if (score > bestScore) {
+            bestScore = score;
+            best = feature;
+          }
         }
       } catch {
         // try next strategy
       }
+    }
+    if (best && bestScore >= 40) {
+      const props = best.properties || {};
+      return {
+        method: 'address',
+        owner: props[fields.ownerName] || [fields.ownerNameParts?.map(p => props[p]).join(' ')].filter(Boolean)[0],
+        parcelId: props[fields.parcelId],
+        siteAddress: props[fields.siteAddress],
+        municipality: county.districtLookup?.[String(props[fields.districtField] || '').padStart(county.districtPadLength || 2, '0')],
+        score: bestScore,
+      };
     }
   }
 
@@ -88,6 +99,7 @@ async function resolveCounty(countyKey, lat, lng, address) {
     owner,
     parcelId: props[fields.parcelId],
     siteAddress: props[fields.siteAddress],
+    municipality: county.districtLookup?.[String(props[fields.districtField] || '').padStart(county.districtPadLength || 2, '0')],
   };
 }
 
@@ -95,6 +107,7 @@ const CASES = [
   { key: 'york', lat: 40.001, lng: -76.850, address: '3400 Fox Run Rd, Dover, PA' },
   { key: 'adams', lat: 39.830, lng: -77.231, address: '1 Lincoln Sq, Gettysburg, PA' },
   { key: 'lancaster', lat: 40.0379, lng: -76.3055, address: '1 N Queen St, Lancaster, PA' },
+  { key: 'lancaster', lat: 40.042, lng: -76.305, address: '124 E King St, Lancaster, PA' },
   { key: 'cumberland', lat: 40.201, lng: -77.189, address: '1 Courthouse Sq, Carlisle, PA' },
   { key: 'dauphin', lat: 40.260, lng: -76.884, address: '2 N 2nd St, Harrisburg, PA' },
   { key: 'franklin', lat: 39.937, lng: -77.661, address: '20 S Main St, Chambersburg, PA' },
@@ -111,7 +124,9 @@ const CASES = [
         test.key.padEnd(12),
         result.method.padEnd(8),
         result.owner?.slice(0, 40) || '-',
-        result.parcelId || '-'
+        result.parcelId || '-',
+        result.municipality || '-',
+        result.score != null ? `score=${result.score}` : ''
       );
       if (!ok) failed += 1;
     } catch (err) {

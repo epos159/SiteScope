@@ -21,6 +21,18 @@ async function queryArcGIS(endpoint, params) {
   return response.data;
 }
 
+function composeSiteAddress(props, parts) {
+  if (!parts?.length) return null;
+  return (
+    parts
+      .map(part => props[part])
+      .filter(value => value != null && String(value).trim())
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim() || null
+  );
+}
+
 function normalizeParcelProps(props, county, fields) {
   let acreage = null;
   if (fields.acreageDirect && props[fields.acreageDirect] != null) {
@@ -33,7 +45,8 @@ function normalizeParcelProps(props, county, fields) {
 
   let municipality = props[fields.municipality] || null;
   if (!municipality && fields.districtField && county.districtLookup) {
-    const code = String(props[fields.districtField] || '').padStart(2, '0');
+    const padLen = county.districtPadLength || 2;
+    const code = String(props[fields.districtField] || '').padStart(padLen, '0');
     municipality = county.districtLookup[code] || null;
   }
 
@@ -47,6 +60,12 @@ function normalizeParcelProps(props, county, fields) {
         .trim() || null;
   }
 
+  let siteAddress = props[fields.siteAddress] || null;
+  const composedSiteAddress = composeSiteAddress(props, fields.siteAddressParts);
+  if (composedSiteAddress && (!siteAddress || composedSiteAddress.length >= siteAddress.length)) {
+    siteAddress = composedSiteAddress;
+  }
+
   return {
     ownerName,
     ownerName2: fields.ownerName2 ? props[fields.ownerName2] || null : null,
@@ -54,7 +73,7 @@ function normalizeParcelProps(props, county, fields) {
     acreage,
     municipality,
     county: county.name,
-    siteAddress: props[fields.siteAddress] || null,
+    siteAddress,
   };
 }
 
