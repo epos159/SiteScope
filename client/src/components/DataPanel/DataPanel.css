@@ -126,6 +126,12 @@
   border-color: #fcd34d;
 }
 
+.parcel-match-note--ok {
+  color: #166534;
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+
 /* ─── Field / Value rows ──────────────────────────────────────── */
 .field-row {
   display: flex;

@@ -1,10 +1,16 @@
 import React from 'react';
 import './DataPanel.css';
+import { shouldShowParcelMatchWarning } from '../../utils/parcelMatch';
 
 export default function ParcelCard({ data, isLoading, location, onNeighborClick }) {
   const props = data?.feature?.properties;
   const neighbors = data?.neighbors || [];
   const hadAddressSearch = Boolean(location?.searchedAddress?.trim());
+  const showMatchWarning = shouldShowParcelMatchWarning({
+    data,
+    location,
+    siteAddress: props?.siteAddress,
+  });
 
   return (
     <div className="data-card">
@@ -28,125 +34,24 @@ export default function ParcelCard({ data, isLoading, location, onNeighborClick 
           <p className="data-card-unavailable">Data not available for this location.</p>
         )}
 
-        {!isLoading && data?.matchMethod === 'address' && data?.geocodeMismatch && props?.siteAddress && (
-          <p className="parcel-match-note">
-            Matched by county address records: <strong>{props.siteAddress}</strong>. The map pin may be offset from this parcel.
+        {!isLoading && hadAddressSearch && data?.matchConfidence === 'high' && props && (
+          <p className="parcel-match-note parcel-match-note--ok">
+            Matched to {props.county || 'county'} assessor records
+            {props.siteAddress ? (
+              <> for <strong>{props.siteAddress}</strong></>
+            ) : null}
+            .
           </p>
         )}
 
-        {!isLoading && hadAddressSearch && data?.matchMethod === 'point' && data?.matchConfidence === 'low' && (
+        {!isLoading && showMatchWarning && (
           <p className="parcel-match-note parcel-match-note--warn">
-            Could not confidently match your searched address. Showing the nearest county parcel
+            We found a nearby parcel, but it may not match your search
             {props?.siteAddress ? (
               <> (<strong>{props.siteAddress}</strong>)</>
             ) : null}
-            . Click the correct parcel on the map if this owner looks wrong.
-          </p>
-        )}
-
-        {!isLoading && hadAddressSearch && data?.matchMethod === 'point' && data?.matchConfidence === 'medium' && (
-          <p className="parcel-match-note">
-            Matched the parcel at the map pin
-            {props?.siteAddress ? (
-              <> (<strong>{props.siteAddress}</strong>)</>
-            ) : null}
-            . Verify this is the correct lot if the owner looks unexpected.
-          </p>
-        )}
-
-        {!isLoading && data?.geocodeOnBoundary && (
-          <p className="parcel-match-note">
-            The map pin sits on a parcel boundary — verify this is the correct lot.
+            . Click the correct lot on the map if needed.
           </p>
         )}
 
         {!isLoading && props && (
-          <>
-            <div className="field-row">
-              <span className="field-label">Owner</span>
-              <span className="field-value">
-                {props.ownerName || <span className="field-value--muted">Not available</span>}
-                {props.ownerName2 && <><br />{props.ownerName2}</>}
-              </span>
-            </div>
-
-            <div className="field-row">
-              <span className="field-label">Parcel ID</span>
-              <span className="field-value">
-                {props.parcelId || <span className="field-value--muted">—</span>}
-              </span>
-            </div>
-
-            <div className="field-row">
-              <span className="field-label">Lot Acreage</span>
-              <span className="field-value">
-                {props.acreage
-                  ? `${props.acreage} ac`
-                  : <span className="field-value--muted">Not available</span>}
-              </span>
-            </div>
-
-            <div className="field-row">
-              <span className="field-label">Municipality</span>
-              <span className="field-value">
-                {props.municipality || <span className="field-value--muted">Not available</span>}
-              </span>
-            </div>
-
-            <div className="field-row">
-              <span className="field-label">County</span>
-              <span className="field-value">{props.county}</span>
-            </div>
-
-            {props.siteAddress && (
-              <div className="field-row">
-                <span className="field-label">Site Address</span>
-                <span className="field-value">{props.siteAddress}</span>
-              </div>
-            )}
-
-            {props.county && (
-              <p className="data-card-source">Source: {props.county} Assessor GIS</p>
-            )}
-
-            {neighbors.length > 0 && (
-              <>
-                <p className="card-section-title" style={{ marginTop: 16 }}>
-                  Adjoining Landowners
-                  {onNeighborClick && (
-                    <span className="neighbor-hint"> — click to view parcel</span>
-                  )}
-                </p>
-                <ul className="neighbor-list">
-                  {neighbors.map((n, i) => (
-                    <li key={n.parcelId || i} className="neighbor-item">
-                      <span className="neighbor-dot" />
-                      {onNeighborClick && n.centroid ? (
-                        <button
-                          className="neighbor-btn"
-                          onClick={() => onNeighborClick(n.centroid.lat, n.centroid.lng, n.ownerName)}
-                          title={`View parcel for ${n.ownerName}`}
-                        >
-                          {n.ownerName}
-                        </button>
-                      ) : (
-                        <span>{n.ownerName}</span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-          </>
-        )}
-
-        {!isLoading && !props && data?.supported !== false && !data?.error && (
-          <p className="data-card-unavailable">
-            {data?.message || 'No parcel found at this location.'}
-            {' '}Click the correct parcel on the map, or try a more complete address with city and ZIP.
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}

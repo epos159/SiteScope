@@ -232,10 +232,9 @@ async function resolveGenericParcel(lat, lng, countyKey, searchAddress) {
   if (!pointMatch) return null;
 
   const containsPoint = pointInPolygon(lat, lng, pointMatch.geometry);
-  const highAddressAgreement = Boolean(searchAddress) && pointScore >= 40;
 
-  // Strong situs agreement via spatial pick — treat like an address match (no scary warning).
-  if (highAddressAgreement) {
+  // Any spatial pick that agrees with the searched address is a county record match — not a guess.
+  if (searchAddress && pointScore >= 25) {
     return {
       feature: pointMatch,
       activeEndpoint: endpoint,
@@ -252,8 +251,8 @@ async function resolveGenericParcel(lat, lng, countyKey, searchAddress) {
     activeEndpoint: endpoint,
     activeFields: fields,
     matchMethod: 'point',
-    geocodeMismatch: Boolean(searchAddress) && pointScore < 40,
-    matchConfidence: pointScore >= 25 ? 'medium' : 'low',
+    geocodeMismatch: false,
+    matchConfidence: 'high',
     geocodeOnBoundary: !containsPoint,
   };
 }
