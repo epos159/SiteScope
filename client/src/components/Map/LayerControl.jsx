@@ -24,13 +24,6 @@ const LAYER_CONFIG = [
     description: 'National Flood Hazard Layer',
   },
   {
-    id: 'buildings',
-    label: 'Building Footprints',
-    color: '#ef4444',
-    defaultOn: false,
-    description: 'Microsoft MSBFP2',
-  },
-  {
     id: 'soil',
     label: 'Soil Types',
     color: '#a16207',

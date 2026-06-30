@@ -78,21 +78,6 @@ export async function getSoil(lat, lng, geometry, options = {}) {
 }
 
 /**
- * Fetch Microsoft building footprints for a point/geometry.
- * Returns { features, count, structures, error? }
- */
-export async function getBuildings(lat, lng, geometry, options = {}) {
-  const params = { lat, lng };
-  if (geometry) params.geometry = JSON.stringify(geometry);
-  const { data } = await axios.get(`${BASE}/buildings`, withSignal({
-    params,
-    timeout: 90000,
-    ...options,
-  }));
-  return data;
-}
-
-/**
  * Fetch USGS elevation statistics for a point/geometry.
  * Returns { minElevationFt, maxElevationFt, elevationRangeFt, estimatedMaxSlopePct, hasSteepSlopes, error? }
  */

@@ -44,13 +44,6 @@ const floodStyle = feature => {
   };
 };
 
-const BUILDING_STYLE = {
-  color: '#ef4444',
-  weight: 1.5,
-  fillColor: '#fca5a5',
-  fillOpacity: 0.55,
-};
-
 const WETLAND_COLORS = {
   'Freshwater Emergent Wetland': '#10b981',
   'Freshwater Forested/Shrub Wetland': '#065f46',
@@ -158,7 +151,6 @@ export default function MapView({
   parcelFeature,
   neighborFeatures,
   floodFeatures,
-  buildingFeatures,
   wetlandFeatures,
   status,
   onNeighborClick,
@@ -168,7 +160,6 @@ export default function MapView({
     aerial: true,
     parcel: true,
     flood: false,
-    buildings: false,
     soil: false,
     contours: false,
     wetlands: false,
@@ -181,10 +172,6 @@ export default function MapView({
 
   const floodGeoJSON = floodFeatures?.length
     ? { type: 'FeatureCollection', features: floodFeatures }
-    : null;
-
-  const buildingGeoJSON = buildingFeatures?.length
-    ? { type: 'FeatureCollection', features: buildingFeatures }
     : null;
 
   const wetlandGeoJSON = wetlandFeatures?.length
@@ -268,15 +255,6 @@ export default function MapView({
           />
         )}
 
-        {/* ── Building Footprints GeoJSON ── */}
-        {layers.buildings && buildingGeoJSON && (
-          <GeoJSON
-            key={`buildings-${buildingGeoJSON.features.length}`}
-            data={buildingGeoJSON}
-            style={BUILDING_STYLE}
-          />
-        )}
-
         {/* ── NWI Wetlands GeoJSON ── */}
         {layers.wetlands && wetlandGeoJSON && (
           <GeoJSON
@@ -317,7 +295,6 @@ export default function MapView({
         onToggle={toggleLayer}
         hasParcel={!!parcelFeature}
         hasFlood={!!floodGeoJSON}
-        hasBuildings={!!buildingGeoJSON}
         hasWetlands={!!wetlandGeoJSON}
       />
     </div>

@@ -3,12 +3,11 @@ import ParcelCard from './ParcelCard';
 import FloodCard from './FloodCard';
 import SoilCard from './SoilCard';
 import TopographyCard from './TopographyCard';
-import BuildingsCard from './BuildingsCard';
 import MunicipalityCard from './MunicipalityCard';
 import './DataPanel.css';
 
 export default function DataPanel({ state, onNeighborClick }) {
-  const { location, parcel, flood, soil, elevation, buildings, wetlands, status } = state;
+  const { location, parcel, flood, soil, elevation, wetlands, status } = state;
   const isLoading = status === 'loading';
 
   return (
@@ -30,7 +29,6 @@ export default function DataPanel({ state, onNeighborClick }) {
         <FloodCard data={flood} isLoading={isLoading && !flood} />
         <SoilCard data={soil} isLoading={isLoading && !soil} />
         <TopographyCard data={elevation} isLoading={isLoading && !elevation} />
-        <BuildingsCard data={buildings} isLoading={isLoading && !buildings} />
         <MunicipalityCard parcel={parcel} location={location} />
       </div>
     </div>

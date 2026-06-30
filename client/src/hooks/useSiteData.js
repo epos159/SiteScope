@@ -11,7 +11,6 @@ const initialState = {
   parcel: null,
   flood: null,
   soil: null,
-  buildings: null,
   elevation: null,
   wetlands: null,
 };
@@ -55,13 +54,12 @@ async function loadAllData(lat, lng, countyKey, searchedAddress, setState, { sig
   const queryLng = centroid?.lng ?? lng;
 
   // Fire all layer requests in parallel; update each card as its response arrives.
-  // Fast layers (flood, elevation, wetlands) typically render before slow ones (soil, buildings).
+  // Fast layers (flood, elevation, wetlands) typically render before slow ones (soil).
   await Promise.all([
     loadLayer('flood', () => api.getFlood(queryLat, queryLng, requestOptions), setState, isStale),
     loadLayer('elevation', () => api.getElevation(queryLat, queryLng, geometry, requestOptions), setState, isStale),
     loadLayer('wetlands', () => api.getWetlands(queryLat, queryLng, geometry, requestOptions), setState, isStale),
     loadLayer('soil', () => api.getSoil(queryLat, queryLng, geometry, requestOptions), setState, isStale),
-    loadLayer('buildings', () => api.getBuildings(queryLat, queryLng, geometry, requestOptions), setState, isStale),
   ]);
 
   if (!isStale()) {

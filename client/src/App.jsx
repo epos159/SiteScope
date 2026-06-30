@@ -55,7 +55,6 @@ export default function App() {
               flood={state.flood}
               soil={state.soil}
               elevation={state.elevation}
-              buildings={state.buildings}
               wetlands={state.wetlands}
               mapRef={mapRef}
               dataPanelRef={dataPanelRef}
@@ -71,7 +70,6 @@ export default function App() {
           parcelFeature={state.parcel?.feature}
           neighborFeatures={state.parcel?.neighbors}
           floodFeatures={state.flood?.features}
-          buildingFeatures={state.buildings?.features}
           wetlandFeatures={state.wetlands?.features}
           status={state.status}
           onNeighborClick={handleParcelClick}
@@ -98,8 +96,8 @@ export default function App() {
             />
             <h2>Search a Pennsylvania address to begin</h2>
             <p>
-              SiteScope aggregates parcel data, FEMA flood zones, soils, topography, building
-              footprints, and wetlands into a single pre-construction research report.
+              SiteScope aggregates parcel data, FEMA flood zones, soils, topography,
+              and wetlands into a single pre-construction research report.
             </p>
             <div className="app-empty-counties">
               {SUPPORTED_COUNTIES.map(name => (

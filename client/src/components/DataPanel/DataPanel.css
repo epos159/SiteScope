@@ -367,35 +367,6 @@
   color: var(--color-success);
 }
 
-/* ─── Building list ───────────────────────────────────────────── */
-.building-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 8px;
-}
-
-.building-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 7px 10px;
-  background: var(--color-surface-alt);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  font-size: var(--font-size-sm);
-}
-
-.building-item-label {
-  color: var(--color-text-secondary);
-  font-weight: 500;
-}
-
-.building-item-value {
-  color: var(--color-text);
-  font-weight: 600;
-}
-
 /* ─── Responsive ──────────────────────────────────────────────── */
 @media (max-width: 768px) {
   .data-panel-grid {

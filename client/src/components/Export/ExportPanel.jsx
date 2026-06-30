@@ -109,7 +109,7 @@ async function exportPNG({ mapRef }) {
   }
 }
 
-function exportCSV({ location, parcel, flood, soil, elevation, buildings, wetlands }) {
+function exportCSV({ location, parcel, flood, soil, elevation, wetlands }) {
   const rows = [];
 
   const add = (section, key, value) => {
@@ -171,14 +171,6 @@ function exportCSV({ location, parcel, flood, soil, elevation, buildings, wetlan
     add('Topography', 'Slopes > 15%', elevation.hasSteepSlopes ? 'Yes' : 'No');
   }
 
-  // Buildings
-  if (buildings && !buildings.error) {
-    add('Buildings', 'Structure Count', buildings.count);
-    (buildings.structures || []).forEach(s => {
-      add('Buildings', `Structure ${s.id} (sq ft)`, s.squareFeet);
-    });
-  }
-
   // Wetlands
   if (wetlands && !wetlands.error) {
     add('Wetlands', 'Wetlands Present', wetlands.present ? 'Yes' : 'No');
@@ -200,7 +192,7 @@ function exportCSV({ location, parcel, flood, soil, elevation, buildings, wetlan
 
 // ── Component ─────────────────────────────────────────────────────
 export default function ExportPanel({
-  location, parcel, flood, soil, elevation, buildings, wetlands,
+  location, parcel, flood, soil, elevation, wetlands,
   mapRef, dataPanelRef,
 }) {
   const [open, setOpen] = useState(false);
@@ -218,7 +210,7 @@ export default function ExportPanel({
       } else if (format === 'png') {
         await exportPNG({ mapRef });
       } else if (format === 'csv') {
-        exportCSV({ location, parcel, flood, soil, elevation, buildings, wetlands });
+        exportCSV({ location, parcel, flood, soil, elevation, wetlands });
       }
     } catch (e) {
       console.error('Export error:', e);

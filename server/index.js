@@ -7,7 +7,6 @@ const addressSuggestRouter = require('./routes/addressSuggest');
 const parcelsRouter = require('./routes/parcels');
 const floodRouter = require('./routes/flood');
 const soilRouter = require('./routes/soil');
-const buildingsRouter = require('./routes/buildings');
 const elevationRouter = require('./routes/elevation');
 const wetlandsRouter = require('./routes/wetlands');
 
@@ -21,7 +20,6 @@ app.use('/api/address-suggest', addressSuggestRouter);
 app.use('/api/parcels', parcelsRouter);
 app.use('/api/flood', floodRouter);
 app.use('/api/soil', soilRouter);
-app.use('/api/buildings', buildingsRouter);
 app.use('/api/elevation', elevationRouter);
 app.use('/api/wetlands', wetlandsRouter);
 
