@@ -9,6 +9,7 @@ import {
 } from 'react-leaflet';
 import L from 'leaflet';
 import LayerControl from './LayerControl';
+import { getFeatureCentroid } from '../../utils/geo';
 import './MapView.css';
 
 // Fix Leaflet default icon path broken by bundlers
@@ -21,6 +22,37 @@ L.Icon.Default.mergeOptions({
 
 const DEFAULT_CENTER = [39.96, -76.73]; // York, PA
 const DEFAULT_ZOOM = 10;
+const PARCEL_FLY_MAX_ZOOM = 17;
+const PARCEL_FALLBACK_ZOOM = 17;
+// Ignore tiny/degenerate parcel bounds (common on some PASDA urban lots).
+const MIN_BOUNDS_SPAN_DEG = 0.00003;
+
+function isDegenerateBounds(bounds) {
+  const sw = bounds.getSouthWest();
+  const ne = bounds.getNorthEast();
+  const latSpan = Math.abs(ne.lat - sw.lat);
+  const lngSpan = Math.abs(ne.lng - sw.lng);
+  return latSpan < MIN_BOUNDS_SPAN_DEG && lngSpan < MIN_BOUNDS_SPAN_DEG;
+}
+
+function flyToParcel(map, parcelFeature) {
+  const layer = L.geoJSON(parcelFeature);
+  const bounds = layer.getBounds();
+  if (!bounds.isValid()) return;
+
+  if (isDegenerateBounds(bounds)) {
+    const centroid =
+      getFeatureCentroid(parcelFeature.geometry) || bounds.getCenter();
+    map.flyTo([centroid.lat, centroid.lng], PARCEL_FALLBACK_ZOOM, { duration: 0.8 });
+    return;
+  }
+
+  map.flyToBounds(bounds, {
+    padding: [60, 60],
+    duration: 0.8,
+    maxZoom: PARCEL_FLY_MAX_ZOOM,
+  });
+}
 
 // ── Layer style helpers ────────────────────────────────────────────
 const PARCEL_STYLE = {
@@ -67,17 +99,13 @@ function MapController({ parcelFeature, location }) {
   useEffect(() => {
     if (parcelFeature?.geometry) {
       try {
-        const layer = L.geoJSON(parcelFeature);
-        const bounds = layer.getBounds();
-        if (bounds.isValid()) {
-          map.flyToBounds(bounds, { padding: [60, 60], duration: 0.8 });
-        }
+        flyToParcel(map, parcelFeature);
       } catch {
         // Silently ignore invalid geometry
       }
     } else if (location && location !== prevLocationRef.current) {
       prevLocationRef.current = location;
-      map.flyTo([location.lat, location.lng], 15, { duration: 0.8 });
+      map.flyTo([location.lat, location.lng], PARCEL_FALLBACK_ZOOM, { duration: 0.8 });
     }
   }, [parcelFeature, location, map]);
 
