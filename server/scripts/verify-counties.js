@@ -52,7 +52,12 @@ async function resolveCounty(countyKey, lat, lng, address) {
         owner: props[fields.ownerName] || [fields.ownerNameParts?.map(p => props[p]).join(' ')].filter(Boolean)[0],
         parcelId: props[fields.parcelId],
         siteAddress: props[fields.siteAddress],
-        municipality: county.districtLookup?.[String(props[fields.districtField] || '').padStart(county.districtPadLength || 2, '0')],
+        municipality:
+          county.districtLookup?.[
+            String(props[fields.districtField] ?? '').trim().padStart(county.districtPadLength || 2, '0')
+          ] ||
+          props[fields.municipality] ||
+          null,
         score: bestScore,
       };
     }
@@ -99,7 +104,9 @@ async function resolveCounty(countyKey, lat, lng, address) {
     owner,
     parcelId: props[fields.parcelId],
     siteAddress: props[fields.siteAddress],
-    municipality: county.districtLookup?.[String(props[fields.districtField] || '').padStart(county.districtPadLength || 2, '0')],
+    municipality: county.districtLookup?.[
+      String(props[fields.districtField] ?? '').trim().padStart(county.districtPadLength || 2, '0')
+    ],
   };
 }
 

@@ -352,6 +352,49 @@ function pickBestParcelMatch(searchAddress, features, addressSearch, lat, lng, g
   return bestScore > 0 ? best : null;
 }
 
+const franklinTaxDistricts = require('../config/franklinTaxDistricts');
+
+/**
+ * Map Franklin situs/post-office city names to assessor municipality names.
+ * Used only when TAX_DIST is missing from the parcel record.
+ */
+const FRANKLIN_CITY_TO_MUNICIPALITY = Object.fromEntries(
+  Object.values(franklinTaxDistricts).map(name => [name.toUpperCase(), name])
+);
+Object.assign(FRANKLIN_CITY_TO_MUNICIPALITY, {
+  CHAMBERSBURG: 'Chambersburg Borough',
+  GREENCASTLE: 'Greencastle Borough',
+  WAYNESBORO: 'Waynesboro Borough',
+  MERCERSBURG: 'Mercersburg Borough',
+  'MONT ALTO': 'Mont Alto Borough',
+  ORRSTOWN: 'Orrstown Borough',
+  SHIPPENSBURG: 'Shippensburg Borough',
+  FAYETTEVILLE: 'Guilford Township',
+  'BLUE RIDGE SUMMIT': 'Washington Township',
+  QUINCY: 'Quincy Township',
+  'SPRING RUN': 'Fannett Township',
+  'SOUTH MOUNTAIN': 'Greene Township',
+  'FORT LOUDON': 'Metal Township',
+  'UPPER STRASBURG': 'Lurgan Township',
+  FANNETTSBURG: 'Metal Township',
+  DOYLESBURG: 'Fannett Township',
+});
+
+function parseMunicipalityFromSitus(situs) {
+  if (!situs?.trim()) return null;
+  const match = situs.toUpperCase().match(/\s+([A-Z][A-Z0-9\s.'-]+?)\s+PA\s+\d{5}\b/);
+  if (!match) return null;
+  const city = match[1].replace(/\s+/g, ' ').trim();
+  if (!city || city === 'NONE') return null;
+  return city;
+}
+
+function resolveFranklinMunicipalityFromCity(city) {
+  if (!city?.trim()) return null;
+  const key = city.toUpperCase().replace(/\s+/g, ' ').trim();
+  return FRANKLIN_CITY_TO_MUNICIPALITY[key] || null;
+}
+
 module.exports = {
   parseSearchAddress,
   buildAddressWhereClause,
@@ -360,4 +403,6 @@ module.exports = {
   scoreParcelAddressMatch,
   pickBestAddressMatch,
   pickBestParcelMatch,
+  parseMunicipalityFromSitus,
+  resolveFranklinMunicipalityFromCity,
 };

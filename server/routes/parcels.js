@@ -6,6 +6,9 @@ const {
   buildAddressWhereClauses,
   pickBestParcelMatch,
   scoreParcelAddressMatch,
+  parseSearchAddress,
+  parseMunicipalityFromSitus,
+  resolveFranklinMunicipalityFromCity,
 } = require('../utils/addressUtils');
 const { pointInPolygon, getPolygonArea } = require('../utils/geoUtils');
 
@@ -43,11 +46,14 @@ function normalizeParcelProps(props, county, fields) {
     acreage = (parseFloat(props[fields.acreage]) / 43560).toFixed(2);
   }
 
-  let municipality = props[fields.municipality] || null;
+  let municipality = fields.municipality ? props[fields.municipality] || null : null;
   if (!municipality && fields.districtField && county.districtLookup) {
     const padLen = county.districtPadLength || 2;
-    const code = String(props[fields.districtField] || '').padStart(padLen, '0');
-    municipality = county.districtLookup[code] || null;
+    const rawCode = String(props[fields.districtField] ?? '').trim();
+    if (rawCode) {
+      const code = rawCode.padStart(padLen, '0');
+      municipality = county.districtLookup[code] || null;
+    }
   }
 
   let ownerName = fields.ownerName ? props[fields.ownerName] || null : null;
@@ -169,6 +175,29 @@ async function fetchParcelNearPointGeneric(lat, lng, county, endpoint, fields, s
 
   if (!best) return null;
   return toFeature(best, county, fields);
+}
+
+function applyMunicipalityFallbacks(properties, countyKey, searchAddress) {
+  if (!properties || properties.municipality) return;
+
+  if (countyKey === 'franklin') {
+    const situsCity = parseMunicipalityFromSitus(properties.siteAddress);
+    if (situsCity) {
+      properties.municipality = resolveFranklinMunicipalityFromCity(situsCity);
+    }
+  }
+
+  if (!properties.municipality && searchAddress) {
+    const { city } = parseSearchAddress(searchAddress);
+    if (city) {
+      if (countyKey === 'franklin') {
+        properties.municipality = resolveFranklinMunicipalityFromCity(city);
+      }
+      if (!properties.municipality) {
+        properties.municipality = city;
+      }
+    }
+  }
 }
 
 async function resolveGenericParcel(lat, lng, countyKey, searchAddress) {
@@ -408,6 +437,10 @@ router.get('/', async (req, res) => {
       geocodeOnBoundary,
     } = resolved;
     const county = COUNTIES[effectiveCountyKey];
+
+    if (feature?.properties) {
+      applyMunicipalityFallbacks(feature.properties, effectiveCountyKey, address);
+    }
 
     let neighbors = [];
     if (feature.geometry) {

@@ -8,6 +8,7 @@
  */
 
 const lancasterDistrictLookup = require('./lancasterDistricts');
+const franklinTaxDistrictLookup = require('./franklinTaxDistricts');
 
 const COUNTIES = {
   york: {
@@ -230,8 +231,11 @@ const COUNTIES = {
       acreage: null,
       acreageDirect: 'BASE_ACRES',
       municipality: null,
+      districtField: 'TAX_DIST',
       siteAddress: 'FULL_SITUS',
     },
+    districtPadLength: 2,
+    districtLookup: franklinTaxDistrictLookup,
     acreageFromShapeArea: false,
     addressSearch: {
       siteAddress: 'SITUSAddre',
