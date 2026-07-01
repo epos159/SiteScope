@@ -1,7 +1,7 @@
 const express = require('express');
 const axios = require('axios');
 const { COUNTIES, inferCountyKeyFromCoords, getSupportedCountyNames } = require('../config/counties');
-const { getBoundingBox, bboxToEsriEnvelope, getGeometryCentroid } = require('../utils/geoUtils');
+const { getBoundingBox, bboxToEsriEnvelope, getGeometryCentroid, geojsonToEsriPolygon } = require('../utils/geoUtils');
 const {
   buildAddressWhereClauses,
   pickBestParcelMatch,
@@ -261,6 +261,110 @@ async function resolveParcel(lat, lng, countyKey, searchAddress) {
   return resolveGenericParcel(lat, lng, countyKey, searchAddress);
 }
 
+const URBAN_ACREAGE_THRESHOLD = 0.25;
+const NEIGHBOR_CAP_URBAN = 4;
+const NEIGHBOR_CAP_RURAL = 6;
+
+function getNeighborCap(acreage) {
+  const acres = acreage != null ? parseFloat(acreage) : NaN;
+  if (!Number.isNaN(acres) && acres < URBAN_ACREAGE_THRESHOLD) return NEIGHBOR_CAP_URBAN;
+  return NEIGHBOR_CAP_RURAL;
+}
+
+function centroidDistance(a, b) {
+  if (!a || !b) return Infinity;
+  return Math.hypot(a.lat - b.lat, a.lng - b.lng);
+}
+
+function parcelDiagonalDeg(geometry) {
+  const bbox = getBoundingBox(geometry);
+  return Math.hypot(bbox.maxLat - bbox.minLat, bbox.maxLng - bbox.minLng);
+}
+
+async function fetchNeighborFeatures(activeEndpoint, parcelGeometry) {
+  const esriPolygon = geojsonToEsriPolygon(parcelGeometry);
+  if (esriPolygon) {
+    try {
+      const polygonData = await queryArcGIS(activeEndpoint, {
+        geometry: JSON.stringify(esriPolygon),
+        geometryType: 'esriGeometryPolygon',
+        inSR: 4326,
+        spatialRel: 'esriSpatialRelIntersects',
+        outFields: '*',
+        returnGeometry: true,
+        resultRecordCount: 50,
+      });
+      if (polygonData.features?.length) return polygonData.features;
+    } catch (err) {
+      console.warn('[parcels] polygon neighbor query failed:', err.message);
+    }
+  }
+
+  try {
+    const bbox = getBoundingBox(parcelGeometry);
+    const envelope = bboxToEsriEnvelope(bbox, 0);
+    const intersectData = await queryArcGIS(activeEndpoint, {
+      geometry: JSON.stringify(envelope),
+      geometryType: 'esriGeometryEnvelope',
+      inSR: 4326,
+      spatialRel: 'esriSpatialRelIntersects',
+      outFields: '*',
+      returnGeometry: true,
+      resultRecordCount: 50,
+    });
+    return intersectData.features || [];
+  } catch (err) {
+    console.warn('[parcels] envelope neighbor query failed:', err.message);
+    return [];
+  }
+}
+
+function buildNeighbors(rawFeatures, county, activeFields, mainParcel, cap) {
+  const mainId = mainParcel.parcelId;
+  const mainCentroid = getGeometryCentroid(mainParcel.geometry);
+  const maxDist = Math.max(parcelDiagonalDeg(mainParcel.geometry) * 1.25, 0.00012);
+  const seen = new Set([mainId]);
+
+  const candidates = [];
+  for (const f of rawFeatures) {
+    const rawProps = f.properties || {};
+    const id = rawProps[activeFields.parcelId];
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+
+    const geometry = f.geometry || null;
+    const centroid = getGeometryCentroid(geometry);
+    if (!centroid) continue;
+
+    const dist = centroidDistance(mainCentroid, centroid);
+    if (dist > maxDist) continue;
+
+    const normalized = normalizeParcelProps(rawProps, county, activeFields);
+    candidates.push({
+      parcelId: normalized.parcelId,
+      ownerName: normalized.ownerName || 'Unknown Owner',
+      centroid,
+      geometry,
+      dist,
+    });
+  }
+
+  candidates.sort((a, b) => a.dist - b.dist);
+  return candidates.slice(0, cap).map(({ dist: _dist, ...neighbor }) => neighbor);
+}
+
+async function fetchNeighbors(activeEndpoint, feature, county, activeFields) {
+  if (!feature.geometry) return [];
+
+  const cap = getNeighborCap(feature.properties?.acreage);
+  const features = await fetchNeighborFeatures(activeEndpoint, feature.geometry);
+
+  return buildNeighbors(features, county, activeFields, {
+    parcelId: feature.properties?.parcelId,
+    geometry: feature.geometry,
+  }, cap);
+}
+
 router.get('/', async (req, res) => {
   const { lat, lng, countyKey, address } = req.query;
 
@@ -303,48 +407,12 @@ router.get('/', async (req, res) => {
       matchConfidence,
       geocodeOnBoundary,
     } = resolved;
-    const normalized = feature.properties;
+    const county = COUNTIES[effectiveCountyKey];
 
     let neighbors = [];
     if (feature.geometry) {
       try {
-        const bbox = getBoundingBox(feature.geometry);
-        const envelope = bboxToEsriEnvelope(bbox, 0.0005);
-        const neighborData = await queryArcGIS(activeEndpoint, {
-          geometry: JSON.stringify(envelope),
-          geometryType: 'esriGeometryEnvelope',
-          inSR: 4326,
-          spatialRel: 'esriSpatialRelIntersects',
-          outFields: [activeFields.parcelId, activeFields.ownerName, activeFields.ownerName2]
-            .filter(Boolean)
-            .join(','),
-          returnGeometry: true,
-          resultRecordCount: 25,
-        });
-
-        if (neighborData.features) {
-          const mainId = normalized.parcelId;
-          const seen = new Set([mainId]);
-          neighbors = neighborData.features
-            .filter(f => {
-              const id = f.properties?.[activeFields.parcelId];
-              if (!id || seen.has(id)) return false;
-              seen.add(id);
-              return true;
-            })
-            .map(f => {
-              const geometry = f.geometry || null;
-              const centroid = getGeometryCentroid(geometry);
-              return {
-                parcelId: f.properties[activeFields.parcelId] || null,
-                ownerName: f.properties[activeFields.ownerName] || 'Unknown Owner',
-                centroid,
-                geometry,
-              };
-            })
-            .filter(n => n.centroid)
-            .slice(0, 12);
-        }
+        neighbors = await fetchNeighbors(activeEndpoint, feature, county, activeFields);
       } catch (neighborErr) {
         console.warn('[parcels] neighbor query failed:', neighborErr.message);
       }

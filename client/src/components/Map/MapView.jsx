@@ -4,6 +4,7 @@ import {
   TileLayer,
   GeoJSON,
   WMSTileLayer,
+  ZoomControl,
   useMap,
 } from 'react-leaflet';
 import L from 'leaflet';
@@ -192,8 +193,7 @@ export default function MapView({
         className="map-container"
         zoomControl={false}
       >
-        {/* Zoom control top-left */}
-        <div className="leaflet-control-zoom leaflet-bar leaflet-control" style={{ position: 'absolute', top: 10, left: 10, zIndex: 1000 }} />
+        <ZoomControl position="topleft" />
 
         {/* ── Base layers ── */}
         {layers.aerial ? (

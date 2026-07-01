@@ -196,8 +196,9 @@ const COUNTIES = {
   dauphin: {
     name: 'Dauphin County',
     state: 'Pennsylvania',
+    // Official Dauphin County GIS — PASDA mirror is older (DauphinCountyParcels202205).
     parcelEndpoint:
-      'https://mapservices.pasda.psu.edu/server/rest/services/pasda/DauphinCounty/MapServer/0/query',
+      'https://services2.arcgis.com/EEtiX55QzkHKYQKY/ArcGIS/rest/services/DC_Parcels/FeatureServer/0/query',
     fields: {
       ownerName: null,
       ownerNameParts: ['first_name', 'last_name'],

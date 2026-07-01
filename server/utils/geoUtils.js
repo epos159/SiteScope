@@ -114,6 +114,43 @@ function bboxToWkt(bbox, bufferDeg = 0) {
 }
 
 /**
+ * Convert GeoJSON Polygon/MultiPolygon to Esri JSON for REST geometry queries.
+ */
+function geojsonToEsriPolygon(geometry) {
+  if (!geometry) return null;
+
+  const spatialReference = { wkid: 4326 };
+
+  if (geometry.type === 'Polygon') {
+    return { rings: geometry.coordinates, spatialReference };
+  }
+
+  if (geometry.type === 'MultiPolygon') {
+    // Use the largest polygon part for spatial queries.
+    let best = geometry.coordinates[0];
+    let bestArea = 0;
+    for (const poly of geometry.coordinates) {
+      const ring = poly[0];
+      if (!ring?.length) continue;
+      let area = 0;
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const [xi, yi] = ring[i];
+        const [xj, yj] = ring[j];
+        area += (xj + xi) * (yj - yi);
+      }
+      area = Math.abs(area / 2);
+      if (area > bestArea) {
+        bestArea = area;
+        best = poly;
+      }
+    }
+    return { rings: best, spatialReference };
+  }
+
+  return null;
+}
+
+/**
  * Ray-casting point-in-polygon test for GeoJSON Polygon / MultiPolygon.
  */
 function pointInPolygon(lat, lng, geometry) {
@@ -183,6 +220,7 @@ function latLngToWebMercator(lat, lng) {
 
 module.exports = {
   geojsonToWkt,
+  geojsonToEsriPolygon,
   getBoundingBox,
   getGeometryCentroid,
   pointInPolygon,
