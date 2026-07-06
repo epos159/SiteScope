@@ -1,5 +1,6 @@
 const express = require('express');
 const axios = require('axios');
+const { getBoundingBox, bboxToEsriEnvelope, pointInPolygon } = require('../utils/geoUtils');
 
 const router = express.Router();
 
@@ -44,16 +45,41 @@ function esriToGeoJSON(feature) {
   };
 }
 
-async function queryFema(lat, lng, returnGeometry) {
+/**
+ * Build an Esri envelope from parcel geometry, or a small buffered point fallback.
+ * Using an envelope instead of a point returns ALL flood zone polygons that touch
+ * the parcel — not just the one polygon that happens to contain the centroid.
+ */
+function buildQueryEnvelope(lat, lng, parsedGeometry) {
+  if (parsedGeometry) {
+    try {
+      const bbox = getBoundingBox(parsedGeometry);
+      // Small buffer so polygons that share a boundary with the parcel edge are included.
+      return bboxToEsriEnvelope(bbox, 0.0005);
+    } catch {
+      // Fall through to point buffer.
+    }
+  }
+  // ~200 m buffer around geocoded centroid when no parcel geometry is available.
+  const buf = 0.002;
+  return {
+    xmin: lng - buf, ymin: lat - buf,
+    xmax: lng + buf, ymax: lat + buf,
+    spatialReference: { wkid: 4326 },
+  };
+}
+
+async function queryFema(envelopeJson, returnGeometry) {
   const response = await axios.get(FEMA_ENDPOINT, {
     params: {
-      geometry: JSON.stringify({ x: lng, y: lat }),
-      geometryType: 'esriGeometryPoint',
+      geometry: envelopeJson,
+      geometryType: 'esriGeometryEnvelope',
       inSR: 4326,
       spatialRel: 'esriSpatialRelIntersects',
       outFields: FEMA_OUT_FIELDS,
       returnGeometry,
       outSR: 4326,
+      resultRecordCount: 50,
       f: 'json',
     },
     timeout: 45000,
@@ -61,8 +87,26 @@ async function queryFema(lat, lng, returnGeometry) {
   return response.data;
 }
 
+/**
+ * From the returned features, pick the primary zone for the data card.
+ * Preference order: the polygon that contains the centroid > first SFHA zone > features[0].
+ */
+function pickPrimaryFeature(geojsonFeatures, lat, lng) {
+  if (!geojsonFeatures.length) return null;
+
+  const atCentroid = geojsonFeatures.find(
+    f => f.geometry && pointInPolygon(lat, lng, f.geometry)
+  );
+  if (atCentroid) return atCentroid;
+
+  const sfha = geojsonFeatures.find(f => f.properties?.SFHA_TF === 'T');
+  if (sfha) return sfha;
+
+  return geojsonFeatures[0];
+}
+
 router.get('/', async (req, res) => {
-  const { lat, lng } = req.query;
+  const { lat, lng, geometry } = req.query;
 
   if (!lat || !lng) {
     return res.status(400).json({ error: 'lat and lng are required' });
@@ -72,12 +116,20 @@ router.get('/', async (req, res) => {
   const lngF = parseFloat(lng);
   const mapLink = femaMapLink(latF, lngF);
 
+  let parsedGeometry = null;
+  if (geometry) {
+    try { parsedGeometry = JSON.parse(geometry); } catch { /* ignore */ }
+  }
+
+  const envelope = buildQueryEnvelope(latF, lngF, parsedGeometry);
+  const envelopeJson = JSON.stringify(envelope);
+
   try {
-    let data = await queryFema(latF, lngF, true);
+    let data = await queryFema(envelopeJson, true);
 
     if (data.error) {
       console.warn('[flood] geometry query failed, retrying without geometry:', data.error.message);
-      data = await queryFema(latF, lngF, false);
+      data = await queryFema(envelopeJson, false);
     }
 
     if (data.error) {
@@ -94,7 +146,7 @@ router.get('/', async (req, res) => {
     if (!data.features || data.features.length === 0) {
       return res.json({
         zone: 'X',
-        description: 'Area of Minimal Flood Hazard — No FEMA flood hazard features found at this point.',
+        description: 'Area of Minimal Flood Hazard — No FEMA flood hazard features found at this location.',
         sfha: false,
         firmPanel: null,
         femaMapLink: mapLink,
@@ -103,11 +155,22 @@ router.get('/', async (req, res) => {
       });
     }
 
-    const attrs = data.features[0].attributes || {};
-    const zone = attrs.FLD_ZONE || 'Unknown';
-    const sfha = attrs.SFHA_TF === 'T' || attrs.SFHA_TF === true;
-
     const geojsonFeatures = data.features.map(esriToGeoJSON).filter(Boolean);
+
+    // Only send SFHA (Special Flood Hazard Area) polygons to the map overlay.
+    // Zone X polygons cover entire regions and swamp the aerial view. Their
+    // absence from the overlay correctly implies "outside the hazard area."
+    const mapFeatures = geojsonFeatures.filter(f => f.properties?.SFHA_TF === 'T');
+
+    // Determine primary zone for the data card: prefer the polygon that actually
+    // contains the centroid so the card matches what the parcel sits in.
+    const primary = pickPrimaryFeature(geojsonFeatures, latF, lngF);
+    const attrs = primary?.properties || {};
+    const zone = attrs.FLD_ZONE || 'Unknown';
+    const sfha = attrs.SFHA_TF === 'T';
+
+    // Collect any additional hazard zones found in the parcel area.
+    const allZones = [...new Set(geojsonFeatures.map(f => f.properties?.FLD_ZONE).filter(Boolean))];
 
     return res.json({
       zone,
@@ -118,8 +181,9 @@ router.get('/', async (req, res) => {
       firmPanel: null,
       panelType: null,
       description: ZONE_DESCRIPTIONS[zone] || attrs.ZONE_SUBTY || `Flood Zone ${zone}`,
+      allZones,
       femaMapLink: mapLink,
-      features: geojsonFeatures,
+      features: mapFeatures,
       source: 'FEMA National Flood Hazard Layer',
     });
   } catch (err) {

@@ -56,7 +56,7 @@ async function loadAllData(lat, lng, countyKey, searchedAddress, setState, { sig
   // Fire all layer requests in parallel; update each card as its response arrives.
   // Fast layers (flood, elevation, wetlands) typically render before slow ones (soil).
   await Promise.all([
-    loadLayer('flood', () => api.getFlood(queryLat, queryLng, requestOptions), setState, isStale),
+    loadLayer('flood', () => api.getFlood(queryLat, queryLng, geometry, requestOptions), setState, isStale),
     loadLayer('elevation', () => api.getElevation(queryLat, queryLng, geometry, requestOptions), setState, isStale),
     loadLayer('wetlands', () => api.getWetlands(queryLat, queryLng, geometry, requestOptions), setState, isStale),
     loadLayer('soil', () => api.getSoil(queryLat, queryLng, geometry, requestOptions), setState, isStale),

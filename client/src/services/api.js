@@ -49,12 +49,17 @@ export async function getParcels(lat, lng, countyKey, address, options = {}) {
 }
 
 /**
- * Fetch FEMA flood zone data for a point.
- * Returns { zone, description, sfha, firmPanel, femaMapLink, features, error? }
+ * Fetch FEMA flood zone data for a point/geometry.
+ * geometry: optional GeoJSON geometry object — when provided the server queries
+ * the full parcel bbox so all flood zones on the lot are returned, not just the
+ * zone at the geocoded centroid.
+ * Returns { zone, description, sfha, allZones, firmPanel, femaMapLink, features, error? }
  */
-export async function getFlood(lat, lng, options = {}) {
+export async function getFlood(lat, lng, geometry, options = {}) {
+  const params = { lat, lng };
+  if (geometry) params.geometry = JSON.stringify(geometry);
   const { data } = await axios.get(`${BASE}/flood`, withSignal({
-    params: { lat, lng },
+    params,
     timeout: 55000,
     ...options,
   }));

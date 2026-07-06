@@ -60,6 +60,13 @@ export default function FloodCard({ data, isLoading }) {
               </div>
             )}
 
+            {data.allZones?.length > 1 && (
+              <div className="field-row">
+                <span className="field-label">Zones on Parcel</span>
+                <span className="field-value">{data.allZones.join(', ')}</span>
+              </div>
+            )}
+
             <div className="field-row">
               <span className="field-label">SFHA</span>
               <span className="field-value">
