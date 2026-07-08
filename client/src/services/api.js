@@ -101,7 +101,7 @@ export async function getElevation(lat, lng, geometry, options = {}) {
  * Fetch National Wetlands Inventory data for a point/geometry.
  * geometry: optional GeoJSON geometry object — when provided the server queries
  * wetlands that intersect the parcel footprint instead of a 1.5 km radius.
- * Returns { features, count, types, totalAcres, present, clipped, nwiMapLink, error? }
+ * Returns { features, count, types, totalAcres, present, error? }
  */
 export async function getWetlands(lat, lng, geometry, options = {}) {
   const params = { lat, lng };

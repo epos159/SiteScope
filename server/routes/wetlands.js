@@ -1,8 +1,5 @@
 const express = require('express');
 const axios = require('axios');
-const { intersect } = require('@turf/intersect');
-const area = require('@turf/area').default;
-const { featureCollection } = require('@turf/helpers');
 const {
   getBoundingBox,
   latLngToWebMercator,
@@ -18,15 +15,6 @@ const NWI_ENDPOINT =
 
 const PARCEL_BUFFER_DEG = 0.0005;
 const POINT_BUFFER_METERS = 200;
-const SQ_M_PER_ACRE = 4046.8564224;
-
-function nwiMapLink(lat, lng) {
-  return `https://fwsprimary.wim.usgs.gov/wetlands/apps/wetlands-mapper/#overview/?center=${lng},${lat}&zoom=17`;
-}
-
-function geometryToFeature(geometry, properties = {}) {
-  return { type: 'Feature', geometry, properties };
-}
 
 function normalizeWetlandFeature(feature) {
   const props = feature.properties || {};
@@ -89,55 +77,11 @@ function filterToParcel(features, parsedGeometry) {
   );
 }
 
-/**
- * Clip NWI polygons to the parcel footprint for map display and acreage.
- * Without clipping, a shoreline lot can inherit the full lake polygon.
- */
-function clipFeaturesToParcel(features, parcelGeometry) {
-  if (!parcelGeometry) {
-    return { features, clipped: false };
-  }
-
-  const parcelFeature = geometryToFeature(parcelGeometry);
-  const clippedFeatures = [];
-
-  for (const feature of features) {
-    if (!feature.geometry) continue;
-
-    try {
-      const wetlandFeature = geometryToFeature(feature.geometry, feature.properties);
-      const intersection = intersect(
-        featureCollection([wetlandFeature, parcelFeature])
-      );
-
-      if (!intersection?.geometry) continue;
-
-      const acresOnParcel = area(intersection) / SQ_M_PER_ACRE;
-      clippedFeatures.push({
-        type: 'Feature',
-        geometry: intersection.geometry,
-        properties: {
-          ...feature.properties,
-          ACRES_ON_PARCEL: parseFloat(acresOnParcel.toFixed(3)),
-        },
-      });
-    } catch {
-      // Keep the unclipped feature if turf cannot intersect the geometry.
-      clippedFeatures.push(feature);
-    }
-  }
-
-  return { features: clippedFeatures, clipped: true };
-}
-
-function summarizeFeatures(features, { clipped = false, lat, lng } = {}) {
+function summarizeFeatures(features) {
   const types = [...new Set(features.map(f => f.properties?.WETLAND_TYPE).filter(Boolean))];
   const totalAcres = features.reduce((sum, feature) => {
-    const acres = clipped
-      ? feature.properties?.ACRES_ON_PARCEL
-      : feature.properties?.ACRES;
-    const parsed = acres != null ? parseFloat(acres) : 0;
-    return sum + (Number.isNaN(parsed) ? 0 : parsed);
+    const acres = feature.properties?.ACRES ? parseFloat(feature.properties.ACRES) : 0;
+    return sum + (Number.isNaN(acres) ? 0 : acres);
   }, 0);
 
   return {
@@ -146,9 +90,7 @@ function summarizeFeatures(features, { clipped = false, lat, lng } = {}) {
     types,
     totalAcres: parseFloat(totalAcres.toFixed(2)),
     present: features.length > 0,
-    clipped,
     source: 'National Wetlands Inventory',
-    nwiMapLink: lat != null && lng != null ? nwiMapLink(lat, lng) : null,
   };
 }
 
@@ -213,14 +155,8 @@ router.get('/', async (req, res) => {
 
     const normalized = data.features.map(normalizeWetlandFeature);
     const parcelFeatures = filterToParcel(normalized, parsedGeometry);
-    const { features: displayFeatures, clipped } = clipFeaturesToParcel(
-      parcelFeatures,
-      parsedGeometry
-    );
 
-    return res.json(
-      summarizeFeatures(displayFeatures, { clipped, lat: latF, lng: lngF })
-    );
+    return res.json(summarizeFeatures(parcelFeatures));
   } catch (err) {
     console.error('[wetlands] error:', err.message);
     return res.json({
