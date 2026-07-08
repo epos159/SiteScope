@@ -218,15 +218,86 @@ function latLngToWebMercator(lat, lng) {
   return { x, y };
 }
 
+/**
+ * Convert GeoJSON Polygon/MultiPolygon to an Esri polygon in Web Mercator.
+ */
+function geojsonToWebMercatorPolygon(geometry) {
+  const esri = geojsonToEsriPolygon(geometry);
+  if (!esri) return null;
+
+  return {
+    rings: esri.rings.map(ring =>
+      ring.map(([lng, lat]) => {
+        const merc = latLngToWebMercator(lat, lng);
+        return [merc.x, merc.y];
+      })
+    ),
+    spatialReference: { wkid: 3857 },
+  };
+}
+
+/**
+ * Build a Web Mercator envelope from a WGS84 bounding box.
+ */
+function bboxToWebMercatorEnvelope(bbox, bufferDeg = 0) {
+  const sw = latLngToWebMercator(bbox.minLat - bufferDeg, bbox.minLng - bufferDeg);
+  const ne = latLngToWebMercator(bbox.maxLat + bufferDeg, bbox.maxLng + bufferDeg);
+  return {
+    xmin: sw.x,
+    ymin: sw.y,
+    xmax: ne.x,
+    ymax: ne.y,
+    spatialReference: { wkid: 3857 },
+  };
+}
+
+function collectExteriorRings(geometry) {
+  if (!geometry) return [];
+  if (geometry.type === 'Polygon') return [geometry.coordinates[0]];
+  if (geometry.type === 'MultiPolygon') return geometry.coordinates.map(poly => poly[0]);
+  return [];
+}
+
+/**
+ * Approximate polygon intersection test for screening map overlays.
+ */
+function geometriesIntersect(geomA, geomB) {
+  const ringsA = collectExteriorRings(geomA);
+  const ringsB = collectExteriorRings(geomB);
+  if (!ringsA.length || !ringsB.length) return false;
+
+  for (const ring of ringsA) {
+    for (const [lng, lat] of ring) {
+      if (pointInPolygon(lat, lng, geomB)) return true;
+    }
+  }
+
+  for (const ring of ringsB) {
+    for (const [lng, lat] of ring) {
+      if (pointInPolygon(lat, lng, geomA)) return true;
+    }
+  }
+
+  const centroidA = getGeometryCentroid(geomA);
+  const centroidB = getGeometryCentroid(geomB);
+  if (centroidA && pointInPolygon(centroidA.lat, centroidA.lng, geomB)) return true;
+  if (centroidB && pointInPolygon(centroidB.lat, centroidB.lng, geomA)) return true;
+
+  return false;
+}
+
 module.exports = {
   geojsonToWkt,
   geojsonToEsriPolygon,
+  geojsonToWebMercatorPolygon,
   getBoundingBox,
   getGeometryCentroid,
   pointInPolygon,
   getPolygonArea,
   pointToBufferWkt,
   bboxToEsriEnvelope,
+  bboxToWebMercatorEnvelope,
   bboxToWkt,
   latLngToWebMercator,
+  geometriesIntersect,
 };
