@@ -176,7 +176,11 @@ function exportCSV({ location, parcel, flood, soil, elevation, wetlands }) {
     add('Wetlands', 'Wetlands Present', wetlands.present ? 'Yes' : 'No');
     add('Wetlands', 'Feature Count', wetlands.count);
     add('Wetlands', 'Types', (wetlands.types || []).join('; '));
-    add('Wetlands', 'Total Acres', wetlands.totalAcres);
+    add(
+      'Wetlands',
+      wetlands.clipped ? 'Acres on Parcel' : 'Total Acres',
+      wetlands.totalAcres
+    );
   }
 
   const csv = Papa.unparse(rows);

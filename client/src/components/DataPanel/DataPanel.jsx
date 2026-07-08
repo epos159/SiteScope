@@ -1,6 +1,7 @@
 import React from 'react';
 import ParcelCard from './ParcelCard';
 import FloodCard from './FloodCard';
+import WetlandCard from './WetlandCard';
 import SoilCard from './SoilCard';
 import TopographyCard from './TopographyCard';
 import MunicipalityCard from './MunicipalityCard';
@@ -27,6 +28,7 @@ export default function DataPanel({ state, onNeighborClick }) {
       <div className="data-panel-grid">
         <ParcelCard data={parcel} isLoading={isLoading && !parcel} location={location} onNeighborClick={onNeighborClick} />
         <FloodCard data={flood} isLoading={isLoading && !flood} />
+        <WetlandCard data={wetlands} isLoading={isLoading && !wetlands} />
         <SoilCard data={soil} isLoading={isLoading && !soil} />
         <TopographyCard data={elevation} isLoading={isLoading && !elevation} />
         <MunicipalityCard parcel={parcel} location={location} />

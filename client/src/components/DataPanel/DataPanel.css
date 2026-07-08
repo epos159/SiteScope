@@ -314,6 +314,50 @@
   line-height: 1.4;
 }
 
+/* ─── Wetlands callout ────────────────────────────────────────── */
+.wetland-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  margin-bottom: 14px;
+}
+
+.wetland-banner.present {
+  background: var(--color-warning-bg, #fffbeb);
+  border: 1px solid #fcd34d;
+}
+
+.wetland-banner.none {
+  background: var(--color-success-bg);
+  border: 1px solid #a7f3d0;
+}
+
+.wetland-banner-status {
+  font-size: var(--font-size-2xl);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+.wetland-banner.present .wetland-banner-status { color: #b45309; }
+.wetland-banner.none .wetland-banner-status { color: var(--color-success); }
+
+.wetland-banner-desc {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  line-height: 1.4;
+}
+
+.data-card-screening-note {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  margin-top: 12px;
+  line-height: 1.45;
+  font-style: italic;
+}
+
 /* ─── Elevation stats ─────────────────────────────────────────── */
 .elev-stat-row {
   display: grid;
