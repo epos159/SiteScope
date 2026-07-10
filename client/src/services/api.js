@@ -8,13 +8,23 @@ function withSignal(options = {}) {
 }
 
 /**
+ * Ping the server health endpoint to wake a sleeping Render free-tier instance.
+ * Fire-and-forget — errors are intentionally swallowed.
+ */
+export function pingServer() {
+  const healthUrl = BASE.replace(/\/api$/, '/health');
+  axios.get(healthUrl, { timeout: 60000 }).catch(() => {});
+}
+
+/**
  * Geocode a Pennsylvania address.
  * Returns { lat, lng, displayName, county, countyKey, state, municipality }
+ * Timeout is generous (45 s) to survive a Render free-tier cold start (~30 s).
  */
 export async function geocode(address, options = {}) {
   const { data } = await axios.get(`${BASE}/geocode`, withSignal({
     params: { address },
-    timeout: 12000,
+    timeout: 45000,
     ...options,
   }));
   return data;

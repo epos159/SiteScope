@@ -1,4 +1,4 @@
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import SearchBar from './components/SearchBar/SearchBar';
 import MapView from './components/Map/MapView';
 import DataPanel from './components/DataPanel/DataPanel';
@@ -6,15 +6,21 @@ import ExportPanel from './components/Export/ExportPanel';
 import { useSiteData } from './hooks/useSiteData';
 import { SUPPORTED_COUNTIES } from './utils/county';
 import { DISCLAIMER_SHORT } from './constants/disclaimer';
+import { pingServer } from './services/api';
 import './App.css';
 
 export default function App() {
   const { state, search, searchByCoords, cancelSearch } = useSiteData();
   const mapRef = useRef(null);
   const dataPanelRef = useRef(null);
+  const [lastQuery, setLastQuery] = useState('');
+
+  // Wake the Render free-tier server as early as possible so the first search
+  // doesn't hit a cold start (~30 s delay).
+  useEffect(() => { pingServer(); }, []);
 
   const handleSearch = useCallback(
-    address => search(address),
+    address => { setLastQuery(address); search(address); },
     [search]
   );
 
@@ -117,7 +123,20 @@ export default function App() {
           <div className="app-empty-inner app-empty-error">
             <div className="app-empty-icon">⚠️</div>
             <h2>Search failed</h2>
-            <p>{state.errorMessage || 'Try adding a city, state, or ZIP code to your search.'}</p>
+            <p>
+              {state.errorMessage === 'Could not geocode address. Please try again.'
+                ? 'The server may be starting up (this can take ~30 seconds on first use). Please try again.'
+                : state.errorMessage || 'Try adding a city, state, or ZIP code to your search.'}
+            </p>
+            {lastQuery && (
+              <button
+                className="btn btn-primary"
+                style={{ marginTop: '1rem' }}
+                onClick={() => handleSearch(lastQuery)}
+              >
+                Try again
+              </button>
+            )}
           </div>
         </div>
       )}
