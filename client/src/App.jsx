@@ -116,7 +116,7 @@ export default function App() {
         <div className="app-empty">
           <div className="app-empty-inner app-empty-error">
             <div className="app-empty-icon">⚠️</div>
-            <h2>Address not found</h2>
+            <h2>Search failed</h2>
             <p>{state.errorMessage || 'Try adding a city, state, or ZIP code to your search.'}</p>
           </div>
         </div>

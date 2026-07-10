@@ -12,7 +12,23 @@ const wetlandsRouter = require('./routes/wetlands');
 
 const app = express();
 
-app.use(cors({ origin: process.env.CLIENT_ORIGIN || '*' }));
+/**
+ * CLIENT_ORIGIN may be set with or without https:// in the Render dashboard.
+ * Browsers always send a full origin (https://...), so a bare hostname fails CORS
+ * and every search looks like "Address not found" in the UI.
+ */
+function resolveCorsOrigin() {
+  const raw = (process.env.CLIENT_ORIGIN || '').trim();
+  if (!raw || raw === '*') return true; // reflect request Origin
+  return raw.split(',').map(part => {
+    const origin = part.trim();
+    if (!origin) return origin;
+    if (/^https?:\/\//i.test(origin)) return origin;
+    return `https://${origin}`;
+  });
+}
+
+app.use(cors({ origin: resolveCorsOrigin() }));
 app.use(express.json());
 
 app.use('/api/geocode', geocodeRouter);
