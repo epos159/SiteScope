@@ -1,6 +1,7 @@
 import React from 'react';
 import './DataPanel.css';
 import { shouldShowParcelMatchWarning } from '../../utils/parcelMatch';
+import { getAssessmentPortal } from '../../constants/assessmentPortals';
 
 export default function ParcelCard({ data, isLoading, location, onNeighborClick }) {
   const props = data?.feature?.properties;
@@ -11,6 +12,13 @@ export default function ParcelCard({ data, isLoading, location, onNeighborClick 
     location,
     siteAddress: props?.siteAddress,
   });
+  const countyKey =
+    location?.countyKey ||
+    data?.countyKey ||
+    (props?.county
+      ? String(props.county).toLowerCase().replace(/\s*county\s*$/i, '').trim()
+      : null);
+  const assessmentPortal = getAssessmentPortal(countyKey);
 
   return (
     <div className="data-card">
@@ -96,6 +104,27 @@ export default function ParcelCard({ data, isLoading, location, onNeighborClick 
               <div className="field-row">
                 <span className="field-label">Site Address</span>
                 <span className="field-value">{props.siteAddress}</span>
+              </div>
+            )}
+
+            {assessmentPortal && (
+              <div className="field-row">
+                <span className="field-label">Assessment Records</span>
+                <span className="field-value">
+                  <a
+                    href={assessmentPortal.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {assessmentPortal.label} →
+                  </a>
+                  <div className="field-value--muted" style={{ marginTop: 4, fontSize: 'var(--font-size-xs)' }}>
+                    {assessmentPortal.hint}
+                    {props.parcelId ? (
+                      <> — search with parcel ID <strong>{props.parcelId}</strong></>
+                    ) : null}
+                  </div>
+                </span>
               </div>
             )}
 
