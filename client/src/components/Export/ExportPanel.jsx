@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Papa from 'papaparse';
 import { DISCLAIMER_FULL } from '../../constants/disclaimer';
 import './ExportPanel.css';
@@ -14,19 +14,101 @@ async function captureElement(el) {
   });
 }
 
-async function exportPDF({ address, mapRef, dataPanelRef }) {
-  const { jsPDF } = await import('jspdf');
-  const date = new Date().toLocaleDateString('en-US', {
+function formatDate() {
+  return new Date().toLocaleDateString('en-US', {
     year: 'numeric', month: 'long', day: 'numeric',
   });
+}
 
-  const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
-  const pageW = pdf.internal.pageSize.getWidth();
-  const pageH = pdf.internal.pageSize.getHeight();
-  const margin = 36;
-  const contentW = pageW - margin * 2;
+function safeFilename(address) {
+  return address.replace(/[^a-z0-9]/gi, '_').slice(0, 40);
+}
 
-  // Header
+/** Build flat report rows used by PDF tables and CSV. */
+function buildReportRows({ location, parcel, flood, soil, elevation, wetlands }) {
+  const sections = [];
+
+  const pushSection = (title, fields) => {
+    const filled = fields.filter(([, value]) => value != null && value !== '');
+    if (filled.length) sections.push({ title, fields: filled });
+  };
+
+  pushSection('Location', [
+    ['Address', location?.displayName],
+    ['County', location?.county],
+    ['State', location?.state],
+    ['Latitude', location?.lat],
+    ['Longitude', location?.lng],
+  ]);
+
+  const p = parcel?.feature?.properties;
+  if (p) {
+    pushSection('Parcel', [
+      ['Owner', p.ownerName],
+      ['Owner 2', p.ownerName2],
+      ['Parcel ID', p.parcelId],
+      ['Acreage', p.acreage != null ? `${p.acreage} ac` : null],
+      ['Municipality', p.municipality],
+      ['County', p.county],
+      ['Site Address', p.siteAddress],
+    ]);
+  }
+
+  const neighbors = parcel?.neighbors || [];
+  if (neighbors.length) {
+    pushSection(
+      'Adjoining Landowners',
+      neighbors.map((n, i) => [`Neighbor ${i + 1}`, n.ownerName])
+    );
+  }
+
+  if (flood && !flood.error) {
+    pushSection('Flood', [
+      ['Zone', flood.zone],
+      ['Description', flood.description],
+      ['SFHA', flood.sfha ? 'Yes' : 'No'],
+      ['Zones on Parcel', flood.allZones?.length > 1 ? flood.allZones.join(', ') : null],
+      ['Base Flood Elevation', flood.staticBfe != null ? `${flood.staticBfe} ${flood.lenUnit || 'ft'}` : null],
+      ['FIRM Panel', flood.firmPanel],
+    ]);
+  }
+
+  (soil?.mapUnits || []).forEach((mu, i) => {
+    pushSection(`Soil Unit ${i + 1}${mu.symbol ? ` (${mu.symbol})` : ''}`, [
+      ['Name', mu.name],
+      ['Component %', mu.componentPct],
+      ['Slope Class', mu.slopeClass],
+      ['Slope Range', mu.slopeMin != null ? `${mu.slopeMin}–${mu.slopeMax}%` : null],
+      ['Drainage', mu.drainage],
+      ['Hydrologic Group', mu.hydrologicGroup],
+      ['Hydric', mu.hydric ? 'Yes' : 'No'],
+      ['Taxonomy', mu.taxOrder],
+    ]);
+  });
+
+  if (elevation && !elevation.error) {
+    pushSection('Topography', [
+      ['Min Elevation', elevation.minElevationFt != null ? `${elevation.minElevationFt} ft` : null],
+      ['Max Elevation', elevation.maxElevationFt != null ? `${elevation.maxElevationFt} ft` : null],
+      ['Elevation Range', elevation.elevationRangeFt != null ? `${elevation.elevationRangeFt} ft` : null],
+      ['Est. Max Slope', elevation.estimatedMaxSlopePct != null ? `${elevation.estimatedMaxSlopePct}%` : null],
+      ['Slopes > 15%', elevation.hasSteepSlopes ? 'Yes' : 'No'],
+    ]);
+  }
+
+  if (wetlands && !wetlands.error) {
+    pushSection('Wetlands', [
+      ['Present', wetlands.present ? 'Yes' : 'No'],
+      ['Feature Count', wetlands.count],
+      ['Types', (wetlands.types || []).join('; ')],
+      ['Total Acres', wetlands.totalAcres],
+    ]);
+  }
+
+  return sections;
+}
+
+function drawHeader(pdf, { address, date, pageW, margin }) {
   pdf.setFillColor(26, 41, 64);
   pdf.rect(0, 0, pageW, 52, 'F');
   pdf.setTextColor(255, 255, 255);
@@ -35,45 +117,11 @@ async function exportPDF({ address, mapRef, dataPanelRef }) {
   pdf.text('SiteScope Site Research Report', margin, 24);
   pdf.setFont('helvetica', 'normal');
   pdf.setFontSize(9);
-  pdf.text(`${address}`, margin, 38);
+  pdf.text(String(address), margin, 38);
   pdf.text(`Generated ${date}`, margin, 49);
+}
 
-  let y = 68;
-
-  // Map snapshot
-  if (mapRef?.current) {
-    try {
-      const mapEl = mapRef.current.querySelector('.map-container') || mapRef.current;
-      const canvas = await captureElement(mapEl);
-      const imgData = canvas.toDataURL('image/jpeg', 0.85);
-      const mapH = (canvas.height / canvas.width) * contentW;
-      pdf.addImage(imgData, 'JPEG', margin, y, contentW, Math.min(mapH, 240));
-      y += Math.min(mapH, 240) + 16;
-    } catch (e) {
-      console.warn('Map capture failed:', e);
-    }
-  }
-
-  // Data panel snapshot — may require a new page
-  if (dataPanelRef?.current) {
-    try {
-      const canvas = await captureElement(dataPanelRef.current);
-      const imgData = canvas.toDataURL('image/jpeg', 0.85);
-      const panelW = contentW;
-      const panelH = (canvas.height / canvas.width) * panelW;
-
-      if (y + panelH > pageH - 52) {
-        pdf.addPage();
-        y = 36;
-      }
-
-      pdf.addImage(imgData, 'JPEG', margin, y, panelW, panelH);
-    } catch (e) {
-      console.warn('Data panel capture failed:', e);
-    }
-  }
-
-  // Footer with disclaimer on every page
+function drawFooters(pdf, { pageW, pageH, margin, contentW }) {
   const totalPages = pdf.internal.getNumberOfPages();
   const footerH = 52;
   for (let i = 1; i <= totalPages; i++) {
@@ -89,20 +137,140 @@ async function exportPDF({ address, mapRef, dataPanelRef }) {
     pdf.text('SiteScope by Posch Ventures — poschventures.com', margin, pageH - 10);
     pdf.text(`Page ${i} of ${totalPages}`, pageW - margin, pageH - 10, { align: 'right' });
   }
+}
 
-  const safeAddr = address.replace(/[^a-z0-9]/gi, '_').slice(0, 40);
-  pdf.save(`SiteScope_${safeAddr}_${date.replace(/\s/g, '-')}.pdf`);
+/**
+ * Draw labeled field rows as sharp PDF text (not a screenshot).
+ * Returns the next y position.
+ */
+function drawTextSections(pdf, sections, { startY, pageH, pageW, margin, contentW, footerReserve = 60 }) {
+  let y = startY;
+  const labelW = 130;
+  const valueX = margin + labelW;
+  const valueW = contentW - labelW;
+  const bottom = pageH - footerReserve;
+
+  const ensureSpace = needed => {
+    if (y + needed > bottom) {
+      pdf.addPage();
+      y = 36;
+    }
+  };
+
+  for (const section of sections) {
+    ensureSpace(28);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(11);
+    pdf.setTextColor(26, 41, 64);
+    pdf.text(section.title, margin, y);
+    y += 6;
+    pdf.setDrawColor(203, 213, 225);
+    pdf.setLineWidth(0.6);
+    pdf.line(margin, y, margin + contentW, y);
+    y += 14;
+
+    for (const [label, value] of section.fields) {
+      const valueLines = pdf.splitTextToSize(String(value), valueW);
+      const rowH = Math.max(12, valueLines.length * 11);
+      ensureSpace(rowH + 4);
+
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(9);
+      pdf.setTextColor(100, 116, 139);
+      pdf.text(label, margin, y);
+
+      pdf.setTextColor(30, 41, 59);
+      pdf.text(valueLines, valueX, y);
+      y += rowH;
+    }
+
+    y += 10;
+  }
+
+  return y;
+}
+
+async function captureMap(mapRef) {
+  if (!mapRef?.current) return null;
+  const mapEl = mapRef.current.querySelector('.map-container') || mapRef.current;
+  return captureElement(mapEl);
+}
+
+async function exportPDF({
+  mode,
+  address,
+  mapRef,
+  location,
+  parcel,
+  flood,
+  soil,
+  elevation,
+  wetlands,
+}) {
+  const { jsPDF } = await import('jspdf');
+  const date = formatDate();
+  const landscape = mode === 'map-first';
+  const pdf = new jsPDF({
+    orientation: landscape ? 'landscape' : 'portrait',
+    unit: 'pt',
+    format: 'letter',
+  });
+
+  const pageW = pdf.internal.pageSize.getWidth();
+  const pageH = pdf.internal.pageSize.getHeight();
+  const margin = 36;
+  const contentW = pageW - margin * 2;
+  const footerReserve = 60;
+
+  drawHeader(pdf, { address, date, pageW, margin });
+  let y = 68;
+
+  // Map snapshot
+  try {
+    const canvas = await captureMap(mapRef);
+    if (canvas) {
+      const imgData = canvas.toDataURL('image/jpeg', 0.9);
+      const maxMapH = landscape
+        ? pageH - 68 - footerReserve - 8
+        : mode === 'compact'
+          ? 280
+          : 240;
+      const naturalH = (canvas.height / canvas.width) * contentW;
+      const mapH = Math.min(naturalH, maxMapH);
+      pdf.addImage(imgData, 'JPEG', margin, y, contentW, mapH);
+      y += mapH + 16;
+
+      if (landscape) {
+        // Map-first: data always starts on page 2 so the map stays large.
+        pdf.addPage();
+        y = 36;
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(12);
+        pdf.setTextColor(26, 41, 64);
+        pdf.text('Site Data Summary', margin, y);
+        y += 18;
+      }
+    }
+  } catch (e) {
+    console.warn('Map capture failed:', e);
+  }
+
+  const sections = buildReportRows({ location, parcel, flood, soil, elevation, wetlands });
+  drawTextSections(pdf, sections, { startY: y, pageH, pageW, margin, contentW, footerReserve });
+  drawFooters(pdf, { pageW, pageH, margin, contentW });
+
+  const suffix = mode === 'map-first' ? 'MapFirst' : 'Compact';
+  pdf.save(`SiteScope_${safeFilename(address)}_${suffix}_${date.replace(/\s/g, '-')}.pdf`);
 }
 
 async function exportPNG({ mapRef }) {
   if (!mapRef?.current) return;
   try {
-    const mapEl = mapRef.current.querySelector('.map-container') || mapRef.current;
-    const canvas = await captureElement(mapEl);
+    const canvas = await captureMap(mapRef);
+    if (!canvas) return;
     const a = document.createElement('a');
     a.href = canvas.toDataURL('image/png');
-    const date = new Date().toISOString().slice(0, 10);
-    a.download = `SiteScope_Map_${date}.png`;
+    a.download = `SiteScope_Map_${new Date().toISOString().slice(0, 10)}.png`;
     a.click();
   } catch (e) {
     console.error('PNG export failed:', e);
@@ -110,73 +278,12 @@ async function exportPNG({ mapRef }) {
 }
 
 function exportCSV({ location, parcel, flood, soil, elevation, wetlands }) {
+  const sections = buildReportRows({ location, parcel, flood, soil, elevation, wetlands });
   const rows = [];
-
-  const add = (section, key, value) => {
-    if (value != null && value !== '') {
-      rows.push({ Section: section, Field: key, Value: String(value) });
+  for (const section of sections) {
+    for (const [field, value] of section.fields) {
+      rows.push({ Section: section.title, Field: field, Value: String(value) });
     }
-  };
-
-  // Location
-  add('Location', 'Address', location?.displayName);
-  add('Location', 'County', location?.county);
-  add('Location', 'State', location?.state);
-  add('Location', 'Latitude', location?.lat);
-  add('Location', 'Longitude', location?.lng);
-
-  // Parcel
-  const p = parcel?.feature?.properties;
-  if (p) {
-    add('Parcel', 'Owner Name', p.ownerName);
-    add('Parcel', 'Owner Name 2', p.ownerName2);
-    add('Parcel', 'Parcel ID', p.parcelId);
-    add('Parcel', 'Acreage', p.acreage);
-    add('Parcel', 'Municipality', p.municipality);
-    add('Parcel', 'County', p.county);
-    add('Parcel', 'Site Address', p.siteAddress);
-  }
-  (parcel?.neighbors || []).forEach((n, i) => {
-    add('Adjoining Parcels', `Neighbor ${i + 1}`, n.ownerName);
-  });
-
-  // Flood
-  if (flood && !flood.error) {
-    add('Flood', 'Flood Zone', flood.zone);
-    add('Flood', 'Zone Description', flood.description);
-    add('Flood', 'SFHA', flood.sfha ? 'Yes' : 'No');
-    add('Flood', 'FIRM Panel', flood.firmPanel);
-    add('Flood', 'Base Flood Elevation', flood.staticBfe);
-  }
-
-  // Soil
-  (soil?.mapUnits || []).forEach((mu, i) => {
-    const prefix = `Soil Unit ${i + 1} (${mu.symbol})`;
-    add(prefix, 'Name', mu.name);
-    add(prefix, 'Component %', mu.componentPct);
-    add(prefix, 'Slope Class', mu.slopeClass);
-    add(prefix, 'Slope Range', mu.slopeMin != null ? `${mu.slopeMin}–${mu.slopeMax}%` : null);
-    add(prefix, 'Drainage Class', mu.drainage);
-    add(prefix, 'Hydrologic Group', mu.hydrologicGroup);
-    add(prefix, 'Hydric Soil', mu.hydric ? 'Yes' : 'No');
-    add(prefix, 'Taxonomy Order', mu.taxOrder);
-  });
-
-  // Elevation / Topography
-  if (elevation && !elevation.error) {
-    add('Topography', 'Min Elevation (ft)', elevation.minElevationFt);
-    add('Topography', 'Max Elevation (ft)', elevation.maxElevationFt);
-    add('Topography', 'Elevation Range (ft)', elevation.elevationRangeFt);
-    add('Topography', 'Est. Max Slope (%)', elevation.estimatedMaxSlopePct);
-    add('Topography', 'Slopes > 15%', elevation.hasSteepSlopes ? 'Yes' : 'No');
-  }
-
-  // Wetlands
-  if (wetlands && !wetlands.error) {
-    add('Wetlands', 'Wetlands Present', wetlands.present ? 'Yes' : 'No');
-    add('Wetlands', 'Feature Count', wetlands.count);
-    add('Wetlands', 'Types', (wetlands.types || []).join('; '));
-    add('Wetlands', 'Total Acres', wetlands.totalAcres);
   }
 
   const csv = Papa.unparse(rows);
@@ -184,13 +291,23 @@ function exportCSV({ location, parcel, flood, soil, elevation, wetlands }) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  const date = new Date().toISOString().slice(0, 10);
-  a.download = `SiteScope_Data_${date}.csv`;
+  a.download = `SiteScope_Data_${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
 
-// ── Component ─────────────────────────────────────────────────────
+function printReport() {
+  document.body.classList.add('print-report');
+  const cleanup = () => {
+    document.body.classList.remove('print-report');
+    window.removeEventListener('afterprint', cleanup);
+  };
+  window.addEventListener('afterprint', cleanup);
+  // Fallback if afterprint never fires (some browsers).
+  setTimeout(cleanup, 60_000);
+  window.print();
+}
+
 export default function ExportPanel({
   location, parcel, flood, soil, elevation, wetlands,
   mapRef, dataPanelRef,
@@ -201,16 +318,49 @@ export default function ExportPanel({
 
   const address = location?.displayName?.split(',').slice(0, 3).join(', ') || 'Unknown';
 
+  useEffect(() => {
+    if (!open) return undefined;
+    const onClick = e => {
+      if (panelRef.current && !panelRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [open]);
+
   const handleExport = async format => {
     setExporting(format);
     setOpen(false);
     try {
-      if (format === 'pdf') {
-        await exportPDF({ address, mapRef, dataPanelRef });
+      if (format === 'pdf-compact') {
+        await exportPDF({
+          mode: 'compact',
+          address,
+          mapRef,
+          location,
+          parcel,
+          flood,
+          soil,
+          elevation,
+          wetlands,
+        });
+      } else if (format === 'pdf-map') {
+        await exportPDF({
+          mode: 'map-first',
+          address,
+          mapRef,
+          location,
+          parcel,
+          flood,
+          soil,
+          elevation,
+          wetlands,
+        });
       } else if (format === 'png') {
         await exportPNG({ mapRef });
       } else if (format === 'csv') {
         exportCSV({ location, parcel, flood, soil, elevation, wetlands });
+      } else if (format === 'print') {
+        printReport();
       }
     } catch (e) {
       console.error('Export error:', e);
@@ -218,6 +368,9 @@ export default function ExportPanel({
       setExporting(null);
     }
   };
+
+  // dataPanelRef kept for API compatibility; PDFs now use text tables.
+  void dataPanelRef;
 
   return (
     <div className="export-panel" ref={panelRef}>
@@ -237,21 +390,38 @@ export default function ExportPanel({
             <line x1="12" y1="15" x2="12" y2="3" />
           </svg>
         )}
-        <span>{exporting ? `Exporting ${exporting.toUpperCase()}…` : 'Export'}</span>
+        <span>{exporting ? 'Exporting…' : 'Export'}</span>
         {!exporting && <span className="export-chevron">▼</span>}
       </button>
 
       {open && (
         <div className="export-dropdown">
-          <button className="export-option" onClick={() => handleExport('pdf')}>
+          <div className="export-dropdown-label">PDF reports</div>
+          <button className="export-option" onClick={() => handleExport('pdf-map')}>
+            <span className="export-option-icon">🗺️</span>
+            <div>
+              <div className="export-option-name">Map-first PDF</div>
+              <div className="export-option-desc">Large landscape map + data pages</div>
+            </div>
+          </button>
+          <button className="export-option" onClick={() => handleExport('pdf-compact')}>
             <span className="export-option-icon">📄</span>
             <div>
-              <div className="export-option-name">PDF Report</div>
-              <div className="export-option-desc">Map + data summary</div>
+              <div className="export-option-name">Compact PDF</div>
+              <div className="export-option-desc">Portrait summary for email</div>
+            </div>
+          </button>
+
+          <div className="export-dropdown-label">Other</div>
+          <button className="export-option" onClick={() => handleExport('print')}>
+            <span className="export-option-icon">🖨️</span>
+            <div>
+              <div className="export-option-name">Print report</div>
+              <div className="export-option-desc">Browser print / Save as PDF</div>
             </div>
           </button>
           <button className="export-option" onClick={() => handleExport('png')}>
-            <span className="export-option-icon">🗺️</span>
+            <span className="export-option-icon">🖼️</span>
             <div>
               <div className="export-option-name">PNG Map</div>
               <div className="export-option-desc">Map with active layers</div>

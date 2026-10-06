@@ -159,3 +159,83 @@
     min-height: 280px;
   }
 }
+
+/* ─── Print report (Export → Print report) ─────────────────────── */
+@media print {
+  @page {
+    size: letter;
+    margin: 0.5in;
+  }
+
+  body.print-report .app-header-search,
+  body.print-report .app-header-actions,
+  body.print-report .app-empty,
+  body.print-report .map-click-hint,
+  body.print-report .layer-control,
+  body.print-report .leaflet-control-zoom,
+  body.print-report .leaflet-control-attribution {
+    display: none !important;
+  }
+
+  body.print-report .app {
+    display: block;
+    min-height: 0;
+  }
+
+  body.print-report .app-header {
+    position: static;
+    height: auto;
+    padding: 0 0 12px;
+    background: none;
+    color: #1a2940;
+    border-bottom: 1px solid #cbd5e1;
+    box-shadow: none;
+  }
+
+  body.print-report .app-header-logo-img {
+    height: 36px;
+    filter: none;
+  }
+
+  body.print-report .app-map-section {
+    height: 7.5in !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    page-break-after: always;
+    break-after: page;
+  }
+
+  body.print-report .map-wrapper,
+  body.print-report .map-container,
+  body.print-report .leaflet-container {
+    height: 100% !important;
+    min-height: 0 !important;
+  }
+
+  body.print-report .app-data-section {
+    page-break-before: always;
+    break-before: page;
+  }
+
+  body.print-report .data-panel-grid {
+    display: block !important;
+  }
+
+  body.print-report .data-card {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    box-shadow: none !important;
+    border: 1px solid #cbd5e1 !important;
+    margin-bottom: 12px;
+  }
+
+  body.print-report .app-footer {
+    margin-top: 16px;
+    border-top: 1px solid #cbd5e1;
+    font-size: 9px;
+  }
+
+  body.print-report a[href]::after {
+    content: none !important;
+  }
+}
