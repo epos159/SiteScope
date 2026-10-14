@@ -310,7 +310,7 @@ function printReport() {
 
 export default function ExportPanel({
   location, parcel, flood, soil, elevation, wetlands,
-  mapRef, dataPanelRef,
+  mapRef, dataPanelRef, canExport = true, onRequireAccount,
 }) {
   const [open, setOpen] = useState(false);
   const [exporting, setExporting] = useState(null);
@@ -328,8 +328,13 @@ export default function ExportPanel({
   }, [open]);
 
   const handleExport = async format => {
-    setExporting(format);
     setOpen(false);
+    if (!canExport) {
+      onRequireAccount?.();
+      return;
+    }
+    setExporting(format);
+    window.gtag?.('event', 'export_report', { format });
     try {
       if (format === 'pdf-compact') {
         await exportPDF({

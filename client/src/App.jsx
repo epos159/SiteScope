@@ -4,7 +4,11 @@ import MapView from './components/Map/MapView';
 import DataPanel from './components/DataPanel/DataPanel';
 import ExportPanel from './components/Export/ExportPanel';
 import AlternativeMatches from './components/SearchBar/AlternativeMatches';
+import AuthModal from './components/Auth/AuthModal';
+import AccountMenu from './components/Auth/AccountMenu';
 import { useSiteData } from './hooks/useSiteData';
+import { useAuth } from './hooks/useAuth';
+import { useFreeSearches } from './hooks/useFreeSearches';
 import { SUPPORTED_COUNTIES } from './utils/county';
 import { DISCLAIMER_SHORT } from './constants/disclaimer';
 import { pingServer } from './services/api';
@@ -12,21 +16,71 @@ import './App.css';
 
 export default function App() {
   const { state, search, searchByCoords, cancelSearch } = useSiteData();
+  const { isAuthConfigured, user } = useAuth();
+  const { remaining, recordSearch, hasSearched } = useFreeSearches();
   const mapRef = useRef(null);
   const dataPanelRef = useRef(null);
   const [lastQuery, setLastQuery] = useState(null);
+  const [authPrompt, setAuthPrompt] = useState(null);
+  const pendingSearchRef = useRef(null);
+  const countNextParcelRef = useRef(false);
+  const isGuest = isAuthConfigured && !user;
 
   // Wake the Render free-tier server as early as possible so the first search
   // doesn't hit a cold start (~30 s delay).
   useEffect(() => { pingServer(); }, []);
 
-  const handleSearch = useCallback(
+  const runSearch = useCallback(
     (address, match = null) => {
       setLastQuery({ address, match });
+      countNextParcelRef.current = true;
       search(address, match);
     },
     [search]
   );
+
+  const handleSearch = useCallback(
+    (address, match = null) => {
+      const alreadyCounted = match?.parcelId && hasSearched(`${match.countyKey}|${match.parcelId}`);
+      if (isGuest && remaining <= 0 && !alreadyCounted) {
+        pendingSearchRef.current = { address, match };
+        setAuthPrompt('limit');
+        return;
+      }
+      runSearch(address, match);
+    },
+    [isGuest, remaining, hasSearched, runSearch]
+  );
+
+  // A free search is used only when it actually loads a parcel.
+  useEffect(() => {
+    if (!countNextParcelRef.current || !state.parcel) return;
+    countNextParcelRef.current = false;
+    const parcelId = state.parcel.feature?.properties?.parcelId;
+    window.gtag?.('event', 'site_search', {
+      county: state.location?.countyKey || 'unsupported',
+      parcel_found: Boolean(parcelId),
+      signed_in: Boolean(user),
+    });
+    if (isGuest && parcelId) {
+      recordSearch(`${state.location?.countyKey}|${parcelId}`);
+    }
+  }, [state.parcel, state.location?.countyKey, isGuest, user, recordSearch]);
+
+  const closeAuthPrompt = useCallback(() => {
+    pendingSearchRef.current = null;
+    setAuthPrompt(null);
+  }, []);
+
+  const handleSignedIn = useCallback(() => {
+    const pending = pendingSearchRef.current;
+    pendingSearchRef.current = null;
+    setAuthPrompt(null);
+    if (pending) runSearch(pending.address, pending.match);
+  }, [runSearch]);
+
+  const openSignIn = useCallback(() => setAuthPrompt('signin'), []);
+  const requireAccountForExport = useCallback(() => setAuthPrompt('export'), []);
 
   const handleAlternativeClick = useCallback(
     alternative => handleSearch(alternative.label, alternative),
@@ -37,6 +91,7 @@ export default function App() {
 
   const handleParcelClick = useCallback(
     (lat, lng, ownerLabel) => {
+      countNextParcelRef.current = false;
       searchByCoords(lat, lng, state.location?.countyKey, ownerLabel || 'Selected parcel');
     },
     [searchByCoords, state.location?.countyKey]
@@ -75,10 +130,19 @@ export default function App() {
               wetlands={state.wetlands}
               mapRef={mapRef}
               dataPanelRef={dataPanelRef}
+              canExport={!isGuest}
+              onRequireAccount={requireAccountForExport}
             />
+          )}
+          {isAuthConfigured && (
+            <AccountMenu remainingSearches={remaining} onSignInClick={openSignIn} />
           )}
         </div>
       </header>
+
+      {authPrompt && (
+        <AuthModal reason={authPrompt} onClose={closeAuthPrompt} onSignedIn={handleSignedIn} />
+      )}
 
       {hasResults && alternatives.length > 0 && (
         <AlternativeMatches
