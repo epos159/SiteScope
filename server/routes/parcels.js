@@ -1,6 +1,11 @@
 const express = require('express');
-const axios = require('axios');
 const { COUNTIES, inferCountyKeyFromCoords, getSupportedCountyNames } = require('../config/counties');
+const {
+  queryArcGIS,
+  normalizeParcelProps,
+  toFeature,
+  fetchParcelById,
+} = require('../services/parcelRecords');
 const { getBoundingBox, bboxToEsriEnvelope, getGeometryCentroid, geojsonToEsriPolygon } = require('../utils/geoUtils');
 const {
   buildAddressWhereClauses,
@@ -13,84 +18,9 @@ const {
 const { pointInPolygon, getPolygonArea } = require('../utils/geoUtils');
 
 const router = express.Router();
-const TIMEOUT = 30000;
 const geoUtils = { pointInPolygon, getGeometryCentroid, getPolygonArea };
-
-async function queryArcGIS(endpoint, params) {
-  const response = await axios.get(endpoint, {
-    params: { ...params, f: 'geojson', outSR: 4326 },
-    timeout: TIMEOUT,
-  });
-  return response.data;
-}
-
-function composeSiteAddress(props, parts) {
-  if (!parts?.length) return null;
-  return (
-    parts
-      .map(part => props[part])
-      .filter(value => value != null && String(value).trim())
-      .join(' ')
-      .replace(/\s+/g, ' ')
-      .trim() || null
-  );
-}
-
-function normalizeParcelProps(props, county, fields) {
-  let acreage = null;
-  if (fields.acreageDirect && props[fields.acreageDirect] != null) {
-    acreage = parseFloat(props[fields.acreageDirect]).toFixed(2);
-  } else if (fields.acreageFallback && props[fields.acreageFallback] != null) {
-    acreage = parseFloat(props[fields.acreageFallback]).toFixed(2);
-  } else if (county.acreageFromShapeArea && fields.acreage && props[fields.acreage] != null) {
-    acreage = (parseFloat(props[fields.acreage]) / 43560).toFixed(2);
-  }
-
-  let municipality = fields.municipality ? props[fields.municipality] || null : null;
-  if (!municipality && fields.districtField && county.districtLookup) {
-    const padLen = county.districtPadLength || 2;
-    const rawCode = String(props[fields.districtField] ?? '').trim();
-    if (rawCode) {
-      const code = rawCode.padStart(padLen, '0');
-      municipality = county.districtLookup[code] || null;
-    }
-  }
-
-  let ownerName = fields.ownerName ? props[fields.ownerName] || null : null;
-  if (!ownerName && fields.ownerNameParts?.length) {
-    ownerName =
-      fields.ownerNameParts
-        .map(part => props[part])
-        .filter(value => value != null && String(value).trim())
-        .join(' ')
-        .trim() || null;
-  }
-
-  let siteAddress = props[fields.siteAddress] || null;
-  const composedSiteAddress = composeSiteAddress(props, fields.siteAddressParts);
-  if (composedSiteAddress && (!siteAddress || composedSiteAddress.length >= siteAddress.length)) {
-    siteAddress = composedSiteAddress;
-  }
-
-  return {
-    ownerName,
-    ownerName2: fields.ownerName2 ? props[fields.ownerName2] || null : null,
-    parcelId: props[fields.parcelId] || null,
-    acreage,
-    municipality,
-    county: county.name,
-    siteAddress,
-  };
-}
-
-function toFeature(rawFeature, county, fields) {
-  const props = rawFeature.properties || {};
-  return {
-    type: 'Feature',
-    geometry: rawFeature.geometry || null,
-    properties: normalizeParcelProps(props, county, fields),
-  };
-}
+// Neighbors are a nice-to-have; never let them hold up owner/municipality.
+const NEIGHBOR_BUDGET_MS = 8000;
 
 async function fetchParcelByAddressGeneric(searchAddress, county, endpoint, fields, addressSearch) {
   const strategies = buildAddressWhereClauses(searchAddress, addressSearch);
@@ -286,8 +216,37 @@ async function resolveGenericParcel(lat, lng, countyKey, searchAddress) {
   };
 }
 
-async function resolveParcel(lat, lng, countyKey, searchAddress) {
+async function resolveParcel(lat, lng, countyKey, searchAddress, parcelId) {
+  if (parcelId) {
+    try {
+      const county = COUNTIES[countyKey];
+      const feature = await fetchParcelById(county, parcelId);
+      if (feature) {
+        return {
+          feature,
+          activeEndpoint: county.parcelEndpoint,
+          activeFields: county.fields,
+          matchMethod: 'parcelId',
+          geocodeMismatch: false,
+          matchConfidence: 'high',
+          geocodeOnBoundary: false,
+        };
+      }
+    } catch (err) {
+      console.warn('[parcels] parcelId lookup failed:', err.message);
+    }
+  }
   return resolveGenericParcel(lat, lng, countyKey, searchAddress);
+}
+
+function withTimeBudget(promise, ms, fallback) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise(resolve => {
+      timer = setTimeout(() => resolve(fallback), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
 }
 
 const URBAN_ACREAGE_THRESHOLD = 0.25;
@@ -395,7 +354,7 @@ async function fetchNeighbors(activeEndpoint, feature, county, activeFields) {
 }
 
 router.get('/', async (req, res) => {
-  const { lat, lng, countyKey, address } = req.query;
+  const { lat, lng, countyKey, address, parcelId } = req.query;
 
   if (!lat || !lng) {
     return res.status(400).json({ error: 'lat and lng are required' });
@@ -414,7 +373,7 @@ router.get('/', async (req, res) => {
   }
 
   try {
-    const resolved = await resolveParcel(lat, lng, effectiveCountyKey, address);
+    const resolved = await resolveParcel(lat, lng, effectiveCountyKey, address, parcelId);
 
     if (!resolved) {
       return res.json({
@@ -445,7 +404,11 @@ router.get('/', async (req, res) => {
     let neighbors = [];
     if (feature.geometry) {
       try {
-        neighbors = await fetchNeighbors(activeEndpoint, feature, county, activeFields);
+        neighbors = await withTimeBudget(
+          fetchNeighbors(activeEndpoint, feature, county, activeFields),
+          NEIGHBOR_BUDGET_MS,
+          []
+        );
       } catch (neighborErr) {
         console.warn('[parcels] neighbor query failed:', neighborErr.message);
       }
@@ -473,3 +436,4 @@ router.get('/', async (req, res) => {
 });
 
 module.exports = router;
+ router;

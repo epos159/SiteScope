@@ -1,6 +1,17 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import axios from 'axios';
 import { suggestAddresses } from '../../services/api';
+import { toTitleCase, formatCountyMatchLabel } from '../../utils/format';
 import './SearchBar.css';
+
+function formatSuggestion(item) {
+  return {
+    ...item,
+    address: toTitleCase(item.address),
+    detail: [toTitleCase(item.municipality), item.countyName].filter(Boolean).join(', '),
+    label: formatCountyMatchLabel(item),
+  };
+}
 
 export default function SearchBar({ onSearch, onCancel, isLoading }) {
   const [value, setValue] = useState('');
@@ -10,60 +21,86 @@ export default function SearchBar({ onSearch, onCancel, isLoading }) {
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const wrapperRef = useRef(null);
   const debounceRef = useRef(null);
+  const suggestAbortRef = useRef(null);
+  const skipSuggestRef = useRef(false);
 
-  const runSearch = useCallback(
-    address => {
-      const trimmed = address.trim();
-      if (!trimmed) return;
-      setOpen(false);
-      setSuggestions([]);
-      setActiveIndex(-1);
-      onSearch(trimmed);
-    },
-    [onSearch]
-  );
-
-  const handleCancel = () => {
+  const closeSuggestions = useCallback(() => {
+    clearTimeout(debounceRef.current);
+    suggestAbortRef.current?.abort();
     setOpen(false);
     setSuggestions([]);
     setActiveIndex(-1);
+    setLoadingSuggestions(false);
+  }, []);
+
+  const runSearch = useCallback(
+    (address, match = null) => {
+      const trimmed = address.trim();
+      if (!trimmed) return;
+      closeSuggestions();
+      onSearch(trimmed, match);
+    },
+    [onSearch, closeSuggestions]
+  );
+
+  const pickSuggestion = useCallback(
+    item => {
+      skipSuggestRef.current = true;
+      setValue(item.label);
+      runSearch(item.label, item);
+    },
+    [runSearch]
+  );
+
+  const handleCancel = () => {
+    closeSuggestions();
     onCancel?.();
   };
 
   const handleSubmit = e => {
     e.preventDefault();
     if (activeIndex >= 0 && suggestions[activeIndex]) {
-      const picked = suggestions[activeIndex].address;
-      setValue(picked);
-      runSearch(picked);
+      pickSuggestion(suggestions[activeIndex]);
       return;
     }
     runSearch(value);
   };
 
   useEffect(() => {
+    if (skipSuggestRef.current) {
+      skipSuggestRef.current = false;
+      return undefined;
+    }
+
     const trimmed = value.trim();
+    clearTimeout(debounceRef.current);
+    suggestAbortRef.current?.abort();
+
     if (trimmed.length < 3) {
       setSuggestions([]);
       setOpen(false);
       return undefined;
     }
 
-    clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
+      const controller = new AbortController();
+      suggestAbortRef.current = controller;
       setLoadingSuggestions(true);
       try {
-        const data = await suggestAddresses(trimmed);
-        setSuggestions(data.suggestions || []);
-        setOpen((data.suggestions || []).length > 0);
+        const data = await suggestAddresses(trimmed, { signal: controller.signal });
+        if (controller.signal.aborted) return;
+        const items = (data.suggestions || []).map(formatSuggestion);
+        setSuggestions(items);
+        setOpen(items.length > 0);
         setActiveIndex(-1);
-      } catch {
+      } catch (err) {
+        if (axios.isCancel(err) || controller.signal.aborted) return;
         setSuggestions([]);
         setOpen(false);
       } finally {
-        setLoadingSuggestions(false);
+        if (!controller.signal.aborted) setLoadingSuggestions(false);
       }
-    }, 280);
+    }, 250);
 
     return () => clearTimeout(debounceRef.current);
   }, [value]);
@@ -96,11 +133,6 @@ export default function SearchBar({ onSearch, onCancel, isLoading }) {
     } else if (e.key === 'Enter') {
       handleSubmit(e);
     }
-  };
-
-  const pickSuggestion = address => {
-    setValue(address);
-    runSearch(address);
   };
 
   return (
@@ -139,8 +171,7 @@ export default function SearchBar({ onSearch, onCancel, isLoading }) {
             className="search-bar-clear"
             onClick={() => {
               setValue('');
-              setSuggestions([]);
-              setOpen(false);
+              closeSuggestions();
               if (isLoading) handleCancel();
             }}
             aria-label="Clear"
@@ -173,16 +204,16 @@ export default function SearchBar({ onSearch, onCancel, isLoading }) {
       {open && suggestions.length > 0 && (
         <ul className="search-suggestions" id="address-suggestions" role="listbox">
           {suggestions.map((item, i) => (
-            <li key={`${item.address}-${i}`} role="option" aria-selected={i === activeIndex}>
+            <li key={`${item.countyKey}-${item.parcelId}`} role="option" aria-selected={i === activeIndex}>
               <button
                 type="button"
                 className={`search-suggestion-item${i === activeIndex ? ' active' : ''}`}
                 onMouseDown={e => e.preventDefault()}
-                onClick={() => pickSuggestion(item.address)}
+                onClick={() => pickSuggestion(item)}
               >
                 <span className="search-suggestion-address">{item.address}</span>
-                {item.source === 'york' && (
-                  <span className="search-suggestion-tag">York GIS</span>
+                {item.detail && (
+                  <span className="search-suggestion-detail">{item.detail}</span>
                 )}
               </button>
             </li>

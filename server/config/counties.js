@@ -33,6 +33,8 @@ const COUNTIES = {
       siteAddress: 'PROPADR',
       streetNumber: 'SITE_ST_NO',
       streetName: 'SITE_ST_NAME',
+      streetDir: 'SITE_ST_DIR',
+      streetSuffix: 'SITE_ST_SUF',
     },
     districtLookup: {
       '01': 'York City Ward 1',
@@ -208,13 +210,16 @@ const COUNTIES = {
       acreage: null,
       acreageDirect: 'acres',
       municipality: 'MUNICIPALI',
-      siteAddress: 'address1',
+      // address1/city/zip_code are the OWNER's mailing address, not the property.
+      siteAddress: null,
+      siteAddressParts: ['house_numb', 'prefix_dir', 'street_nam', 'street_suf', 'post_direc'],
     },
     acreageFromShapeArea: false,
     addressSearch: {
-      siteAddress: 'address1',
       streetNumber: 'house_numb',
       streetName: 'street_nam',
+      streetDir: 'prefix_dir',
+      streetSuffix: 'street_suf',
       streetNumberIsString: true,
     },
   },
@@ -222,24 +227,28 @@ const COUNTIES = {
   franklin: {
     name: 'Franklin County',
     state: 'Pennsylvania',
+    // Official Franklin County tax records — the PASDA mirror takes 60s+ per query.
     parcelEndpoint:
-      'https://mapservices.pasda.psu.edu/server/rest/services/pasda/FranklinCounty/MapServer/0/query',
+      'https://fcgis.franklincountypa.gov/fcgishosting/rest/services/TaxRecords/FC_TaxRecords/MapServer/0/query',
     fields: {
       ownerName: 'FULL_OWNER',
       ownerName2: null,
-      parcelId: 'CONTROL_NU',
+      parcelId: 'CONTROL_NUMBER',
       acreage: null,
-      acreageDirect: 'BASE_ACRES',
-      municipality: null,
+      acreageDirect: 'TOTAL_DEEDED_ACRES',
+      municipality: 'PRC_RES_DIST',
       districtField: 'TAX_DIST',
-      siteAddress: 'FULL_SITUS',
+      siteAddress: 'FULL_SITUS_ADDR',
     },
     districtPadLength: 2,
     districtLookup: franklinTaxDistrictLookup,
     acreageFromShapeArea: false,
     addressSearch: {
-      siteAddress: 'SITUSAddre',
-      alternateStreetName: 'FULL_SITUS',
+      siteAddress: 'SITUSAddress1',
+      streetNumber: 'REM_PRCL_LOCN_NUM',
+      streetName: 'REM_PRCL_LOCN_STREET',
+      streetDir: 'REM_PRCL_LOCN_PRE_DIRECTION',
+      streetSuffix: 'REM_PRCL_LOCN_STR_SFX',
     },
   },
 };

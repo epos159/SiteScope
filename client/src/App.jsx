@@ -3,6 +3,7 @@ import SearchBar from './components/SearchBar/SearchBar';
 import MapView from './components/Map/MapView';
 import DataPanel from './components/DataPanel/DataPanel';
 import ExportPanel from './components/Export/ExportPanel';
+import AlternativeMatches from './components/SearchBar/AlternativeMatches';
 import { useSiteData } from './hooks/useSiteData';
 import { SUPPORTED_COUNTIES } from './utils/county';
 import { DISCLAIMER_SHORT } from './constants/disclaimer';
@@ -13,16 +14,26 @@ export default function App() {
   const { state, search, searchByCoords, cancelSearch } = useSiteData();
   const mapRef = useRef(null);
   const dataPanelRef = useRef(null);
-  const [lastQuery, setLastQuery] = useState('');
+  const [lastQuery, setLastQuery] = useState(null);
 
   // Wake the Render free-tier server as early as possible so the first search
   // doesn't hit a cold start (~30 s delay).
   useEffect(() => { pingServer(); }, []);
 
   const handleSearch = useCallback(
-    address => { setLastQuery(address); search(address); },
+    (address, match = null) => {
+      setLastQuery({ address, match });
+      search(address, match);
+    },
     [search]
   );
+
+  const handleAlternativeClick = useCallback(
+    alternative => handleSearch(alternative.label, alternative),
+    [handleSearch]
+  );
+
+  const alternatives = state.location?.alternatives || [];
 
   const handleParcelClick = useCallback(
     (lat, lng, ownerLabel) => {
@@ -68,6 +79,14 @@ export default function App() {
           )}
         </div>
       </header>
+
+      {hasResults && alternatives.length > 0 && (
+        <AlternativeMatches
+          alternatives={alternatives}
+          currentLabel={state.location?.displayName}
+          onSelect={handleAlternativeClick}
+        />
+      )}
 
       {/* ── Map ── */}
       <div className="app-map-section" ref={mapRef} id="map-section">
@@ -132,7 +151,7 @@ export default function App() {
               <button
                 className="btn btn-primary"
                 style={{ marginTop: '1rem' }}
-                onClick={() => handleSearch(lastQuery)}
+                onClick={() => handleSearch(lastQuery.address, lastQuery.match)}
               >
                 Try again
               </button>

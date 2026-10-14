@@ -31,8 +31,8 @@ export async function geocode(address, options = {}) {
 }
 
 /**
- * Address autocomplete suggestions for the search bar.
- * Returns { suggestions: [{ address, source }] }
+ * Address autocomplete suggestions for the search bar, sourced from county parcel records.
+ * Returns { suggestions: [{ address, detail, countyKey, parcelId, lat, lng, municipality }] }
  */
 export async function suggestAddresses(query, options = {}) {
   const { data } = await axios.get(`${BASE}/address-suggest`, withSignal({
@@ -43,19 +43,41 @@ export async function suggestAddresses(query, options = {}) {
   return data;
 }
 
+function isRetryable(err) {
+  if (axios.isCancel(err) || err?.code === 'ERR_CANCELED') return false;
+  return !err.response || err.response.status >= 500;
+}
+
 /**
- * Fetch parcel data for a geocoded point.
+ * Fetch parcel data for a geocoded point, or an exact parcel when parcelId is known.
+ * Retries once on timeout/network errors (e.g. Render waking up or a slow county server).
  * Returns { supported, feature, neighbors, message?, error? }
  */
-export async function getParcels(lat, lng, countyKey, address, options = {}) {
+export async function getParcels({ lat, lng, countyKey, address, parcelId }, options = {}) {
   const params = { lat, lng, countyKey };
   if (address) params.address = address;
-  const { data } = await axios.get(`${BASE}/parcels`, withSignal({
+  if (parcelId) params.parcelId = parcelId;
+  const request = () => axios.get(`${BASE}/parcels`, withSignal({
     params,
-    timeout: 18000,
+    timeout: 45000,
     ...options,
   }));
-  return data;
+
+  let first;
+  try {
+    ({ data: first } = await request());
+  } catch (err) {
+    if (!isRetryable(err)) throw err;
+  }
+  if (first && !first.error) return first;
+
+  try {
+    const { data } = await request();
+    return data;
+  } catch (err) {
+    if (first) return first;
+    throw err;
+  }
 }
 
 /**

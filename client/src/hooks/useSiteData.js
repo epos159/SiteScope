@@ -33,13 +33,16 @@ async function loadLayer(key, fetcher, setState, isStale) {
   }
 }
 
-async function loadAllData(lat, lng, countyKey, searchedAddress, setState, { signal, isStale }) {
+async function loadAllData({ lat, lng, countyKey, searchedAddress, parcelId }, setState, { signal, isStale }) {
   const requestOptions = { signal };
 
   // Parcel first — geometry feeds centroid for downstream queries.
   let parcel = null;
   try {
-    parcel = await api.getParcels(lat, lng, countyKey, searchedAddress, requestOptions);
+    parcel = await api.getParcels(
+      { lat, lng, countyKey, address: searchedAddress, parcelId },
+      requestOptions
+    );
     if (isStale()) return;
     setState(prev => ({ ...prev, parcel }));
   } catch (err) {
@@ -93,32 +96,51 @@ export function useSiteData() {
   }, []);
 
   /**
-   * Search by typed address — geocodes first, then loads all data.
+   * Search by address. When `match` comes from a county-record suggestion
+   * (has countyKey + parcelId), geocoding is skipped and that exact parcel loads.
    */
-  const search = useCallback(async address => {
+  const search = useCallback(async (address, match = null) => {
     if (!address?.trim()) return;
 
     const { signal, isStale } = beginSearch();
     setState({ ...initialState, status: 'loading' });
 
     let location;
-    try {
-      location = await api.geocode(address, { signal });
-      if (isStale()) return;
+    if (match?.parcelId && match?.countyKey) {
+      location = {
+        lat: match.lat,
+        lng: match.lng,
+        countyKey: match.countyKey,
+        county: getCountyDisplayName(match.countyKey) || '',
+        state: 'Pennsylvania',
+        municipality: match.municipality || '',
+        displayName: match.label || address.trim(),
+        searchedAddress: match.address || address.trim(),
+        parcelId: match.parcelId,
+        source: 'county',
+      };
       setState(prev => ({ ...prev, location }));
-    } catch (err) {
-      if (isAbortError(err) || isStale()) return;
-      const msg = err.response?.data?.error || 'Could not geocode address. Please try again.';
-      setState(prev => ({ ...prev, status: 'error', errorMessage: msg }));
-      return;
+    } else {
+      try {
+        location = await api.geocode(address, { signal });
+        if (isStale()) return;
+        setState(prev => ({ ...prev, location }));
+      } catch (err) {
+        if (isAbortError(err) || isStale()) return;
+        const msg = err.response?.data?.error || 'Could not geocode address. Please try again.';
+        setState(prev => ({ ...prev, status: 'error', errorMessage: msg }));
+        return;
+      }
     }
 
-    const { lat, lng, countyKey } = location;
     await loadAllData(
-      lat,
-      lng,
-      countyKey,
-      location.searchedAddress || address.trim(),
+      {
+        lat: location.lat,
+        lng: location.lng,
+        countyKey: location.countyKey,
+        searchedAddress: location.searchedAddress || address.trim(),
+        parcelId: location.parcelId,
+      },
       setState,
       { signal, isStale }
     );
@@ -146,7 +168,7 @@ export function useSiteData() {
       },
     }));
 
-    await loadAllData(lat, lng, effectiveCountyKey, null, setState, { signal, isStale });
+    await loadAllData({ lat, lng, countyKey: effectiveCountyKey }, setState, { signal, isStale });
   }, [beginSearch]);
 
   return { state, search, searchByCoords, cancelSearch };
