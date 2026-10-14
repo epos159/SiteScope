@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Papa from 'papaparse';
 import { DISCLAIMER_FULL } from '../../constants/disclaimer';
+import { downloadDxf } from '../../services/api';
 import './ExportPanel.css';
 
 async function captureElement(el) {
@@ -314,9 +315,18 @@ export default function ExportPanel({
 }) {
   const [open, setOpen] = useState(false);
   const [exporting, setExporting] = useState(null);
+  const [exportError, setExportError] = useState(null);
   const panelRef = useRef(null);
 
   const address = location?.displayName?.split(',').slice(0, 3).join(', ') || 'Unknown';
+  const parcelId = parcel?.feature?.properties?.parcelId;
+  const canExportDxf = Boolean(parcelId && location?.countyKey);
+
+  useEffect(() => {
+    if (!exportError) return undefined;
+    const timer = setTimeout(() => setExportError(null), 8000);
+    return () => clearTimeout(timer);
+  }, [exportError]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -334,9 +344,17 @@ export default function ExportPanel({
       return;
     }
     setExporting(format);
+    setExportError(null);
     window.gtag?.('event', 'export_report', { format });
     try {
-      if (format === 'pdf-compact') {
+      if (format === 'dxf') {
+        await downloadDxf({
+          countyKey: location.countyKey,
+          parcelId,
+          neighbors: (parcel?.neighbors || []).map(n => n.parcelId).filter(Boolean),
+          address: location.displayName,
+        });
+      } else if (format === 'pdf-compact') {
         await exportPDF({
           mode: 'compact',
           address,
@@ -369,6 +387,7 @@ export default function ExportPanel({
       }
     } catch (e) {
       console.error('Export error:', e);
+      if (format === 'dxf') setExportError(e.message || 'DXF export failed. Please try again.');
     } finally {
       setExporting(null);
     }
@@ -417,6 +436,20 @@ export default function ExportPanel({
             </div>
           </button>
 
+          <div className="export-dropdown-label">CAD</div>
+          <button
+            className="export-option"
+            onClick={() => handleExport('dxf')}
+            disabled={!canExportDxf}
+            title={canExportDxf ? undefined : 'Available once a parcel is loaded'}
+          >
+            <span className="export-option-icon">📐</span>
+            <div>
+              <div className="export-option-name">DXF (CAD)</div>
+              <div className="export-option-desc">PA State Plane South (ft) · parcel, adjoiners, flood, wetlands</div>
+            </div>
+          </button>
+
           <div className="export-dropdown-label">Other</div>
           <button className="export-option" onClick={() => handleExport('print')}>
             <span className="export-option-icon">🖨️</span>
@@ -440,6 +473,9 @@ export default function ExportPanel({
             </div>
           </button>
         </div>
+      )}
+      {exportError && !open && (
+        <div className="export-error" role="alert">{exportError}</div>
       )}
     </div>
   );

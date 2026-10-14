@@ -145,3 +145,42 @@ export async function getWetlands(lat, lng, geometry, options = {}) {
   }));
   return data;
 }
+
+function filenameFromDisposition(header) {
+  const match = /filename="?([^";]+)"?/i.exec(header || '');
+  return match ? match[1] : null;
+}
+
+/**
+ * Download a CAD-ready DXF (PA State Plane South, US ft) of the parcel, adjoiners,
+ * flood zones and wetlands. Saves straight to the browser's downloads — no share sheet.
+ */
+export async function downloadDxf({ countyKey, parcelId, neighbors = [], address }) {
+  let response;
+  try {
+    response = await axios.get(`${BASE}/export/dxf`, {
+      params: { countyKey, parcelId, neighbors: neighbors.join(','), address },
+      responseType: 'blob',
+      timeout: 90000,
+    });
+  } catch (err) {
+    const blob = err.response?.data;
+    if (blob instanceof Blob) {
+      const message = await blob.text().then(t => JSON.parse(t).error).catch(() => null);
+      if (message) throw new Error(message);
+    }
+    throw err;
+  }
+
+  const filename =
+    filenameFromDisposition(response.headers['content-disposition']) ||
+    `SiteScope_${String(parcelId).replace(/[^a-z0-9]+/gi, '_')}.dxf`;
+  const url = URL.createObjectURL(new Blob([response.data], { type: 'application/dxf' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}

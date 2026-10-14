@@ -89,8 +89,28 @@
   border-bottom: none;
 }
 
-.export-option:hover {
+.export-option:hover:not(:disabled) {
   background: var(--color-surface-alt);
+}
+
+.export-option:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.export-error {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 260px;
+  padding: 10px 12px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  color: #991b1b;
+  font-size: var(--font-size-xs);
+  z-index: 2000;
 }
 
 .export-option-icon {

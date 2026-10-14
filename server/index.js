@@ -9,6 +9,7 @@ const floodRouter = require('./routes/flood');
 const soilRouter = require('./routes/soil');
 const elevationRouter = require('./routes/elevation');
 const wetlandsRouter = require('./routes/wetlands');
+const exportDxfRouter = require('./routes/exportDxf');
 
 const app = express();
 
@@ -38,6 +39,7 @@ app.use('/api/flood', floodRouter);
 app.use('/api/soil', soilRouter);
 app.use('/api/elevation', elevationRouter);
 app.use('/api/wetlands', wetlandsRouter);
+app.use('/api/export', exportDxfRouter);
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', app: 'SiteScope' }));
 
