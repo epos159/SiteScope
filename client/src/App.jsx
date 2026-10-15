@@ -229,6 +229,7 @@ export default function App() {
         <p className="app-footer-meta">
           SiteScope by Posch Ventures &nbsp;·&nbsp;{' '}
           <a href="mailto:support@poschventures.com">support@poschventures.com</a>
+          &nbsp;·&nbsp; <a href="/privacy">Privacy</a>
           &nbsp;·&nbsp; poschventures.com
         </p>
       </footer>
