@@ -26,3 +26,6 @@ Thumbs.db
 
 # Vite cache
 client/.vite/
+
+# Wrangler local state
+.wrangler/
