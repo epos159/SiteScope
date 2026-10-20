@@ -3,13 +3,6 @@ import './MapView.css';
 
 const LAYER_CONFIG = [
   {
-    id: 'aerial',
-    label: 'Aerial Imagery',
-    color: '#64748b',
-    defaultOn: true,
-    description: 'Esri satellite basemap',
-  },
-  {
     id: 'parcel',
     label: 'Parcel Boundary',
     color: '#f59e0b',
@@ -53,7 +46,7 @@ const LAYER_CONFIG = [
   },
 ];
 
-export default function LayerControl({ layers, onToggle }) {
+export default function LayerControl({ layers, onToggle, onBasemap }) {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
@@ -74,6 +67,23 @@ export default function LayerControl({ layers, onToggle }) {
       </button>
 
       {!collapsed && (
+        <>
+        <div className="basemap-switch" role="group" aria-label="Base map">
+          <button
+            type="button"
+            aria-pressed={!layers.aerial}
+            onClick={() => onBasemap(false)}
+          >
+            Map
+          </button>
+          <button
+            type="button"
+            aria-pressed={!!layers.aerial}
+            onClick={() => onBasemap(true)}
+          >
+            Satellite
+          </button>
+        </div>
         <ul className="layer-control-list">
           {LAYER_CONFIG.map(layer => (
             <li key={layer.id} className="layer-control-item">
@@ -97,6 +107,7 @@ export default function LayerControl({ layers, onToggle }) {
             </li>
           ))}
         </ul>
+        </>
       )}
     </div>
   );

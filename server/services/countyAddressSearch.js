@@ -39,7 +39,9 @@ const ORDINALS = {
 };
 const ORDINAL_WORDS = Object.fromEntries(Object.entries(ORDINALS).map(([w, n]) => [n, w]));
 
-const UNIT_WORDS = new Set(['UNIT', 'APT', 'STE', 'SUITE', 'LOT', 'CONDO', 'BLDG', 'REAR']);
+const UNIT_WORDS = new Set([
+  'UNIT', 'APT', 'APARTMENT', 'STE', 'SUITE', 'LOT', 'CONDO', 'BLDG', 'BUILDING', 'REAR', 'SPACE', 'SPC',
+]);
 
 // Below this, a typed address disagrees with the record (e.g. "100 Grant St" vs "100 PENN GRANT RD").
 const MIN_FULL_MATCH_SCORE = 50;
@@ -56,25 +58,47 @@ function tokenize(text) {
     .filter(Boolean);
 }
 
+/** "4", "5X", "S23", "A3", "B" — not a street word like AVE. */
+function isUnitId(token) {
+  return /^\d+[A-Z]{0,2}$/.test(token) || /^[A-Z]\d+[A-Z]{0,2}$/.test(token) || /^[A-Z]$/.test(token);
+}
+
+function normUnit(unit) {
+  return String(unit || '').toUpperCase().replace(/^0+(?=\d)/, '');
+}
+
+/** Pull "UNIT 4" / "SUITE S23" out of the token list without dropping the street suffix after it. */
+function pullUnit(tokens) {
+  const idx = tokens.findIndex((t, i) => UNIT_WORDS.has(t) && isUnitId(tokens[i + 1] || ''));
+  if (idx < 0) return { tokens, unit: null };
+  return {
+    unit: tokens[idx + 1],
+    tokens: tokens.filter((_, i) => i !== idx && i !== idx + 1),
+  };
+}
+
+function hasUnitPhrase(text) {
+  const tokens = tokenize(text);
+  return tokens.some((t, i) => UNIT_WORDS.has(t) && isUnitId(tokens[i + 1] || ''));
+}
+
 /**
- * Split "<number> [dir] <street words> [suffix]" into comparable parts.
+ * Split "<number> [dir] <street words> [suffix] [unit]" into comparable parts.
  * Works for both user input and county site-address strings.
+ * Unit ids are kept ("UNIT 4", "100-2") so condo units don't all score the same.
  */
 function parseStreet(text, { partial = false } = {}) {
   let tokens = tokenize(text);
-  const numMatch = tokens[0]?.match(/^(\d+)([A-Z])?(?:-\d+)?$/);
+  const numMatch = tokens[0]?.match(/^(\d+)([A-Z])?(?:-([A-Z0-9]+))?$/);
   if (!numMatch) return null;
   const number = numMatch[1];
   const numberLetter = numMatch[2] || null;
+  let unit = numMatch[3] ? normUnit(numMatch[3]) : null;
   tokens = tokens.slice(1);
 
-  // Drop unit / lot designators ("L-0004", "L2", "UNIT 5", "CONDO").
-  const cut = tokens.findIndex(
-    (t, i) => i > 0 && (UNIT_WORDS.has(t) || /^[A-Z]{1,2}-?\d+$/.test(t))
-  );
-  if (cut >= 0) tokens = tokens.slice(0, cut);
-
-  tokens = tokens.map(t => ORDINALS[t] || t);
+  const extracted = pullUnit(tokens);
+  if (extracted.unit) unit = normUnit(extracted.unit);
+  tokens = extracted.tokens.map(t => ORDINALS[t] || t);
 
   let dir = null;
   // A leading direction only counts when real street words follow ("N 3RD ST", not "NORTH ST").
@@ -90,20 +114,40 @@ function parseStreet(text, { partial = false } = {}) {
     tokens = tokens.slice(0, -1);
   }
 
-  return { number, numberLetter, dir, core: tokens, suffix };
+  return { number, numberLetter, dir, core: tokens, suffix, unit };
+}
+
+/** A plaza or condo with no house number: "Scott Plaza", "Northwood Unit 19". */
+function parsePlace(text) {
+  let tokens = tokenize(text).map(t => ORDINALS[t] || t);
+  const extracted = pullUnit(tokens);
+  tokens = extracted.tokens;
+  if (tokens.length < 1) return null;
+  if (tokens.length < 2 && !extracted.unit) return null;
+  return {
+    place: true,
+    number: null,
+    numberLetter: null,
+    dir: null,
+    core: tokens,
+    suffix: null,
+    unit: extracted.unit ? normUnit(extracted.unit) : null,
+  };
 }
 
 function parseQuery(input, partial) {
   const parts = String(input || '').split(',').map(p => p.trim()).filter(Boolean);
   const street = parseStreet(parts[0] || '', { partial });
-  if (!street || !street.core.length) return null;
+  const place = street?.core?.length ? null : parsePlace(parts[0] || '');
+  const parsed = street?.core?.length ? { ...street, place: false } : place;
+  if (!parsed || !parsed.core.length) return null;
 
   const rest = parts.slice(1).join(' ');
   const zipMatch = rest.match(/\b(\d{5})(?:-\d{4})?\b/) || String(input).match(/\b(\d{5})(?:-\d{4})?\s*$/);
   const cityTokens = tokenize(rest.replace(/\b\d{5}(?:-\d{4})?\b/g, ''))
     .filter(t => t !== 'PA' && t !== 'PENNSYLVANIA' && t.length > 2);
 
-  return { ...street, partial, zip: zipMatch ? zipMatch[1] : null, cityTokens };
+  return { ...parsed, partial, zip: zipMatch ? zipMatch[1] : null, cityTokens };
 }
 
 function pickSearchToken(core, partial) {
@@ -119,40 +163,72 @@ function likeAny(field, token) {
   return clauses.length > 1 ? `(${clauses.join(' OR ')})` : clauses[0];
 }
 
+/** The unit lives in the address text, often with odd spacing ("UNIT  19", "UNIT 4 AVE"). */
+function unitWhere(field, unit) {
+  const u = escapeArcGIS(unit);
+  const words = ['UNIT', 'APT', 'STE', 'SUITE', 'LOT', 'BLDG', 'CONDO', 'SPACE'];
+  const parts = [];
+  for (const word of words) {
+    for (const gap of [' ', '  ']) {
+      // Bound the id so unit 4 does not also match unit 41.
+      parts.push(`UPPER(${field}) LIKE '%${word}${gap}${u}'`);
+      parts.push(`UPPER(${field}) LIKE '%${word}${gap}${u} %'`);
+    }
+  }
+  return `(${parts.join(' OR ')})`;
+}
+
+function addressField(search) {
+  return search.siteAddress || search.streetName || null;
+}
+
 function buildWhere(county, query) {
   const search = county.addressSearch || {};
+  const field = addressField(search);
+  const unitClause = query.unit && field ? ` AND ${unitWhere(field, query.unit)}` : '';
+
+  if (query.place) {
+    if (!field) return null;
+    const tokens = query.core.filter((t, i) => !query.partial || i < query.core.length - 1 || t.length >= 3);
+    if (!tokens.length) return null;
+    return `${tokens.map(t => likeAny(field, t)).join(' AND ')}${unitClause}`;
+  }
+
   const token = pickSearchToken(query.core, query.partial);
   if (!token) return null;
 
   const numbers = [query.number];
   if (query.numberLetter) numbers.push(`${query.number}${query.numberLetter}`);
+  if (query.unit) numbers.push(`${query.number}-${query.unit}`);
 
   if (search.streetNumber && search.streetName) {
     const numExpr = search.streetNumberIsString
       ? `${search.streetNumber} IN (${numbers.map(n => `'${escapeArcGIS(n)}'`).join(', ')})`
       : `${search.streetNumber} = ${parseInt(query.number, 10)}`;
-    return `${numExpr} AND ${likeAny(search.streetName, token)}`;
+    return `${numExpr} AND ${likeAny(search.streetName, token)}${unitClause}`;
   }
 
   if (search.siteAddress) {
-    const field = search.siteAddress;
-    const numExpr = numbers.map(n => `UPPER(${field}) LIKE '${escapeArcGIS(n)} %'`).join(' OR ');
-    return `(${numExpr}) AND ${likeAny(field, token)}`;
+    const numExpr = numbers.map(n => `UPPER(${search.siteAddress}) LIKE '${escapeArcGIS(n)} %'`).join(' OR ');
+    return `(${numExpr}) AND ${likeAny(search.siteAddress, token)}${unitClause}`;
   }
 
   return null;
 }
 
-/** Site address as stored by the county, built from structured parts when available. */
+/** Site address as stored by the county. Prefer the full situs when it carries a unit the parts drop. */
 function candidateStreetText(props, county) {
   const search = county.addressSearch || {};
+  const full = search.siteAddress ? String(props[search.siteAddress] || '').replace(/\s+/g, ' ').trim() : '';
+  let composed = '';
   if (search.streetNumber && search.streetName) {
-    const parts = [search.streetNumber, search.streetDir, search.streetName, search.streetSuffix]
+    composed = [search.streetNumber, search.streetDir, search.streetName, search.streetSuffix]
       .map(f => (f ? props[f] : null))
-      .filter(v => v != null && String(v).trim() && String(v).trim() !== '0');
-    return parts.join(' ');
+      .filter(v => v != null && String(v).trim() && String(v).trim() !== '0')
+      .join(' ');
   }
-  return props[search.siteAddress] || '';
+  if (full && hasUnitPhrase(full) && !hasUnitPhrase(composed)) return full;
+  return composed || full;
 }
 
 function scoreCandidate(query, candidate, municipality, props) {
@@ -196,6 +272,14 @@ function scoreCandidate(query, candidate, municipality, props) {
     score += query.suffix === candidate.suffix ? 8 : -8;
   }
 
+  // A typed unit has to be that unit. "Unit 4" must not land on unit 1.
+  if (query.unit) {
+    if (!candidate.unit || normUnit(query.unit) !== normUnit(candidate.unit)) return null;
+    score += 12;
+  } else if (candidate.unit) {
+    score -= 3;
+  }
+
   let localityMatch = false;
   if (query.cityTokens.length && municipality) {
     const muni = municipality.toUpperCase();
@@ -210,6 +294,44 @@ function scoreCandidate(query, candidate, municipality, props) {
     localityMatch = true;
   }
 
+  return { score, localityMatch };
+}
+
+/** Match a house-number-less place name against the full site address. */
+function scorePlace(query, addressText, municipality, props) {
+  const parsed = parseStreet(addressText) || parsePlace(addressText);
+  if (!parsed) return null;
+  const candidateTokens = new Set(tokenize(addressText).map(t => SUFFIXES[t] || ORDINALS[t] || t));
+  parsed.core.forEach(t => candidateTokens.add(t));
+  if (parsed.suffix) candidateTokens.add(parsed.suffix);
+
+  let score = 40;
+  for (let i = 0; i < query.core.length; i += 1) {
+    const token = query.core[i];
+    const norm = SUFFIXES[token] || token;
+    const exact = candidateTokens.has(token) || candidateTokens.has(norm);
+    const prefix = query.partial && i === query.core.length - 1 && [...candidateTokens].some(t => t.startsWith(token));
+    if (!exact && !prefix) return null;
+    score += exact ? 6 : 3;
+  }
+
+  if (query.unit) {
+    if (!parsed.unit || normUnit(query.unit) !== normUnit(parsed.unit)) return null;
+    score += 12;
+  }
+
+  let localityMatch = false;
+  if (query.cityTokens.length && municipality) {
+    const muni = municipality.toUpperCase();
+    if (query.cityTokens.some(t => muni.includes(t))) {
+      score += 20;
+      localityMatch = true;
+    }
+  }
+  if (query.zip && Object.values(props).some(v => typeof v === 'string' && v.includes(query.zip))) {
+    score += 15;
+    localityMatch = true;
+  }
   return { score, localityMatch };
 }
 
@@ -229,7 +351,9 @@ async function searchCounty(countyKey, query, timeout) {
     const props = feature.properties || {};
     const normalized = normalizeParcelProps(props, county, county.fields);
     const streetText = candidateStreetText(props, county);
-    const scored = scoreCandidate(query, parseStreet(streetText), normalized.municipality, props);
+    const scored = query.place
+      ? scorePlace(query, streetText, normalized.municipality, props)
+      : scoreCandidate(query, parseStreet(streetText), normalized.municipality, props);
     if (!scored || !normalized.parcelId) continue;
     if (!query.partial && scored.score < MIN_FULL_MATCH_SCORE) continue;
 

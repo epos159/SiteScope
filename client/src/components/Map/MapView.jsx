@@ -199,6 +199,10 @@ export default function MapView({
     setLayers(prev => ({ ...prev, [name]: !prev[name] }));
   };
 
+  const setBasemap = aerial => {
+    setLayers(prev => ({ ...prev, aerial }));
+  };
+
   const floodGeoJSON = floodFeatures?.length
     ? { type: 'FeatureCollection', features: floodFeatures }
     : null;
@@ -223,18 +227,29 @@ export default function MapView({
       >
         <ZoomControl position="topleft" />
 
-        {/* ── Base layers ── */}
+        {/* ── Base layers. Esri's public tiles need no API key. Imagery has no
+            text, so street names come from a transparent reference layer on top. ── */}
         {layers.aerial ? (
-          <TileLayer
-            url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-            attribution='Tiles &copy; Esri &mdash; Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
-            maxZoom={20}
-          />
+          <>
+            <TileLayer
+              url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+              attribution='Tiles &copy; Esri &mdash; Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+              maxZoom={20}
+              maxNativeZoom={19}
+            />
+            <TileLayer
+              url="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
+              attribution=""
+              maxZoom={20}
+              maxNativeZoom={19}
+            />
+          </>
         ) : (
           <TileLayer
-            url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-            attribution='&copy; <a href="https://carto.com/">CARTO</a>'
+            url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}"
+            attribution='Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, USGS, Intermap, iPC, NRCAN, Esri Japan, METI, Esri China (Hong Kong), Esri (Thailand), TomTom'
             maxZoom={20}
+            maxNativeZoom={19}
           />
         )}
 
@@ -321,6 +336,7 @@ export default function MapView({
       <LayerControl
         layers={layers}
         onToggle={toggleLayer}
+        onBasemap={setBasemap}
         hasParcel={!!parcelFeature}
         hasFlood={!!floodGeoJSON}
         hasWetlands={!!wetlandGeoJSON}
