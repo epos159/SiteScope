@@ -92,13 +92,19 @@ function parseStreet(text, { partial = false } = {}) {
   const numMatch = tokens[0]?.match(/^(\d+)([A-Z])?(?:-([A-Z0-9]+))?$/);
   if (!numMatch) return null;
   const number = numMatch[1];
-  const numberLetter = numMatch[2] || null;
+  let numberLetter = numMatch[2] || null;
   let unit = numMatch[3] ? normUnit(numMatch[3]) : null;
   tokens = tokens.slice(1);
 
   const extracted = pullUnit(tokens);
   if (extracted.unit) unit = normUnit(extracted.unit);
   tokens = extracted.tokens.map(t => ORDINALS[t] || t);
+
+  // Lancaster stores a plaza building letter in the house-number field: "1786 D".
+  if (!numberLetter && tokens.length >= 2 && /^[A-Z]$/.test(tokens[0]) && !DIRECTIONS[tokens[0]]) {
+    numberLetter = tokens[0];
+    tokens = tokens.slice(1);
+  }
 
   let dir = null;
   // A leading direction only counts when real street words follow ("N 3RD ST", not "NORTH ST").
@@ -198,12 +204,16 @@ function buildWhere(county, query) {
   if (!token) return null;
 
   const numbers = [query.number];
-  if (query.numberLetter) numbers.push(`${query.number}${query.numberLetter}`);
+  if (query.numberLetter) {
+    numbers.push(`${query.number}${query.numberLetter}`);
+    numbers.push(`${query.number} ${query.numberLetter}`);
+  }
   if (query.unit) numbers.push(`${query.number}-${query.unit}`);
 
   if (search.streetNumber && search.streetName) {
+    const quoted = numbers.map(n => `'${escapeArcGIS(n)}'`).join(', ');
     const numExpr = search.streetNumberIsString
-      ? `${search.streetNumber} IN (${numbers.map(n => `'${escapeArcGIS(n)}'`).join(', ')})`
+      ? `(${search.streetNumber} IN (${quoted})${query.numberLetter ? '' : ` OR ${search.streetNumber} LIKE '${escapeArcGIS(query.number)} %'`})`
       : `${search.streetNumber} = ${parseInt(query.number, 10)}`;
     return `${numExpr} AND ${likeAny(search.streetName, token)}${unitClause}`;
   }
@@ -254,7 +264,10 @@ function scoreCandidate(query, candidate, municipality, props) {
   const extra = candidate.core.filter(t => !query.core.includes(t)).length;
   if (!query.partial) score -= extra * 4;
 
-  // "3010A" and "3010" are different parcels.
+  // "3010A" and "3010" are different parcels. A typed building letter must match.
+  if (query.numberLetter && candidate.numberLetter && query.numberLetter !== candidate.numberLetter) {
+    return null;
+  }
   if (query.numberLetter || candidate.numberLetter) {
     score += query.numberLetter === candidate.numberLetter ? 6 : -6;
   }
