@@ -130,6 +130,16 @@ function applyMunicipalityFallbacks(properties, countyKey, searchAddress) {
   }
 }
 
+/** True when the parcel situs uses the house number the user typed, or the search has none. */
+function parcelHasSearchedHouseNumber(searchAddress, feature) {
+  const parsed = parseSearchAddress(searchAddress);
+  if (!parsed.streetNumber) return true;
+  const site = feature?.properties?.siteAddress;
+  if (!site) return true;
+  const num = String(parsed.streetNumber).toUpperCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|\\s|/)${num}(\\s|$|[A-Z])`, 'i').test(String(site));
+}
+
 async function resolveGenericParcel(lat, lng, countyKey, searchAddress) {
   const county = COUNTIES[countyKey];
   const endpoint = county.parcelEndpoint;
@@ -181,6 +191,20 @@ async function resolveGenericParcel(lat, lng, countyKey, searchAddress) {
     pointMatch && searchAddress
       ? scoreParcelAddressMatch(searchAddress, pointMatch, addressSearch)
       : 0;
+
+  // Census interpolates address ranges, so a number the county never assigned
+  // ("2519 S Queen St") can land inside a different parcel on the same street
+  // ("2771 S Queen St"). The street name alone is not a match.
+  if (pointMatch && searchAddress && !parcelHasSearchedHouseNumber(searchAddress, pointMatch)) {
+    const found = pointMatch.properties?.siteAddress;
+    const typed = String(searchAddress).split(',')[0].trim();
+    return {
+      feature: null,
+      message: found
+        ? `No county parcel is addressed ${typed}. The map location falls on ${found}.`
+        : `No county parcel is addressed ${typed}.`,
+    };
+  }
 
   // When the user searched an address, require some agreement with the parcel
   // under the geocoded pin so we don't show an unrelated neighbor.
@@ -375,14 +399,14 @@ router.get('/', async (req, res) => {
   try {
     const resolved = await resolveParcel(lat, lng, effectiveCountyKey, address, parcelId);
 
-    if (!resolved) {
+    if (!resolved?.feature) {
       return res.json({
         supported: true,
         feature: null,
         neighbors: [],
-        message: address
+        message: resolved?.message || (address
           ? 'No parcel found for this address.'
-          : 'No parcel found at this location.',
+          : 'No parcel found at this location.'),
       });
     }
 
