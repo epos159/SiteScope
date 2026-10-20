@@ -36,6 +36,19 @@ const COUNTIES = {
       streetDir: 'SITE_ST_DIR',
       streetSuffix: 'SITE_ST_SUF',
     },
+    // Parcel situs is often only the range start ("2509 S QUEEN ST"). The address
+    // the county viewer finds ("2519") lives in the address-point layer.
+    addressPoints: {
+      endpoint:
+        'https://arcweb1.ycpc.org/server/rest/services/OPEN_DATA/AddressPts/FeatureServer/0/query',
+      number: 'Add_Number',
+      streetDir: 'St_PreDir',
+      streetName: 'StreetName',
+      streetSuffix: 'St_PosTyp',
+      unit: 'Unit',
+      lat: 'Lat',
+      lng: 'Long',
+    },
     districtLookup: {
       '01': 'York City Ward 1',
       '02': 'York City Ward 2',

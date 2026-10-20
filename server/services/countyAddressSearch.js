@@ -372,7 +372,121 @@ async function searchCounty(countyKey, query, timeout) {
       localityMatch: scored.localityMatch,
     });
   }
+  if (!results.length) {
+    try {
+      results.push(...await searchByAddressPoint(countyKey, county, query, timeout));
+    } catch (err) {
+      console.warn(`[countyAddressSearch] ${countyKey} address point lookup failed:`, err.message);
+    }
+  }
   return results;
+}
+
+const DIR_FULL = {
+  N: 'NORTH', S: 'SOUTH', E: 'EAST', W: 'WEST',
+  NE: 'NORTHEAST', NW: 'NORTHWEST', SE: 'SOUTHEAST', SW: 'SOUTHWEST',
+};
+
+function wordsForSuffix(abbr) {
+  const words = new Set([abbr]);
+  for (const [word, mapped] of Object.entries(SUFFIXES)) {
+    if (mapped === abbr) words.add(word);
+  }
+  return [...words];
+}
+
+/**
+ * York (and any county with an address-point layer) stores plaza and range
+ * addresses as points. "2519 S Queen St" is a point on the parcel whose situs
+ * is only "2509 S Queen St".
+ */
+async function searchByAddressPoint(countyKey, county, query, timeout) {
+  const cfg = county.addressPoints;
+  if (!cfg || query.place || !query.number) return [];
+  const token = pickSearchToken(query.core, query.partial);
+  const number = parseInt(query.number, 10);
+  if (!token || !number) return [];
+
+  let where = `${cfg.number} = ${number} AND UPPER(${cfg.streetName}) LIKE '%${escapeArcGIS(token)}%'`;
+  if (query.dir && cfg.streetDir) {
+    const full = DIR_FULL[query.dir];
+    where += ` AND (UPPER(${cfg.streetDir}) = '${query.dir}'${full ? ` OR UPPER(${cfg.streetDir}) = '${full}'` : ''})`;
+  }
+  if (query.suffix && cfg.streetSuffix && !query.partial) {
+    const list = wordsForSuffix(query.suffix).map(word => `'${escapeArcGIS(word)}'`).join(', ');
+    where += ` AND UPPER(${cfg.streetSuffix}) IN (${list})`;
+  }
+  if (query.unit && cfg.unit) {
+    where += ` AND UPPER(${cfg.unit}) = '${escapeArcGIS(query.unit)}'`;
+  }
+
+  const data = await queryArcGIS(
+    cfg.endpoint,
+    { where, outFields: '*', returnGeometry: true, resultRecordCount: 5 },
+    timeout
+  );
+
+  const results = [];
+  const seen = new Set();
+  for (const feature of data.features || []) {
+    const attrs = feature.properties || {};
+    const point = Array.isArray(feature.geometry?.coordinates) ? feature.geometry.coordinates : null;
+    const lng = point ? Number(point[0]) : Number(attrs[cfg.lng]);
+    const lat = point ? Number(point[1]) : Number(attrs[cfg.lat]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+
+    const parcels = await queryArcGIS(
+      county.parcelEndpoint,
+      {
+        geometry: JSON.stringify({ x: lng, y: lat, spatialReference: { wkid: 4326 } }),
+        geometryType: 'esriGeometryPoint',
+        inSR: 4326,
+        spatialRel: 'esriSpatialRelIntersects',
+        outFields: '*',
+        returnGeometry: true,
+      },
+      timeout
+    );
+    const parcel = (parcels.features || []).find(item => item.geometry);
+    if (!parcel) continue;
+    const normalized = normalizeParcelProps(parcel.properties || {}, county, county.fields);
+    if (!normalized.parcelId || seen.has(String(normalized.parcelId))) continue;
+    seen.add(String(normalized.parcelId));
+
+    const centroid = getGeometryCentroid(parcel.geometry) || { lat, lng };
+    const dir = DIRECTIONS[String(attrs[cfg.streetDir] || '').toUpperCase()] || '';
+    const suffix = SUFFIXES[String(attrs[cfg.streetSuffix] || '').toUpperCase()] || '';
+    const unit = cfg.unit ? cleanUnit(attrs[cfg.unit]) : '';
+    const address = [number, dir, String(attrs[cfg.streetName] || '').toUpperCase(), suffix, unit]
+      .filter(Boolean)
+      .join(' ');
+    const municipality = normalized.municipality || null;
+    let localityMatch = false;
+    let score = 84;
+    if (query.cityTokens.length && municipality && query.cityTokens.some(t => municipality.toUpperCase().includes(t))) {
+      score += 20;
+      localityMatch = true;
+    }
+
+    results.push({
+      countyKey,
+      countyName: county.name,
+      parcelId: String(normalized.parcelId),
+      address,
+      municipality,
+      lat: centroid.lat,
+      lng: centroid.lng,
+      score,
+      localityMatch,
+    });
+  }
+  return results;
+}
+
+function cleanUnit(value) {
+  const text = String(value ?? '').replace(/\s+/g, ' ').trim();
+  if (!text || text === '0') return '';
+  return text.toUpperCase();
 }
 
 /**
