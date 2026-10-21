@@ -47,6 +47,15 @@ async function loadAllData({ lat, lng, countyKey, searchedAddress, parcelId }, s
     setState(prev => ({ ...prev, parcel }));
   } catch (err) {
     if (isAbortError(err) || isStale()) return;
+    const code = err.response?.data?.code;
+    if (err.response?.status === 402 || code === 'auth_required') {
+      setState(prev => ({
+        ...prev,
+        status: 'error',
+        errorMessage: code || 'subscription_required',
+      }));
+      return;
+    }
     parcel = { error: true, message: 'Parcel data unavailable.' };
     setState(prev => ({ ...prev, parcel }));
   }

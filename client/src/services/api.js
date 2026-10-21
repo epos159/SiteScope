@@ -2,6 +2,22 @@ import axios from 'axios';
 
 const BASE = import.meta.env.VITE_API_URL || '/api';
 
+let authTokenProvider = null;
+
+/** Called with the signed-in user's ID token, or null for a guest. */
+export function setAuthTokenProvider(provider) {
+  authTokenProvider = provider;
+}
+
+async function authConfig(options = {}) {
+  const headers = { ...(options.headers || {}) };
+  if (authTokenProvider) {
+    const token = await authTokenProvider();
+    if (token) headers.Authorization = `Bearer ${token}`;
+  }
+  return { ...options, headers };
+}
+
 function withSignal(options = {}) {
   const { signal, ...rest } = options;
   return signal ? { ...rest, signal } : rest;
@@ -57,11 +73,11 @@ export async function getParcels({ lat, lng, countyKey, address, parcelId }, opt
   const params = { lat, lng, countyKey };
   if (address) params.address = address;
   if (parcelId) params.parcelId = parcelId;
-  const request = () => axios.get(`${BASE}/parcels`, withSignal({
+  const request = async () => axios.get(`${BASE}/parcels`, withSignal(await authConfig({
     params,
     timeout: 45000,
     ...options,
-  }));
+  })));
 
   let first;
   try {
@@ -90,11 +106,11 @@ export async function getParcels({ lat, lng, countyKey, address, parcelId }, opt
 export async function getFlood(lat, lng, geometry, options = {}) {
   const params = { lat, lng };
   if (geometry) params.geometry = JSON.stringify(geometry);
-  const { data } = await axios.get(`${BASE}/flood`, withSignal({
+  const { data } = await axios.get(`${BASE}/flood`, withSignal(await authConfig({
     params,
     timeout: 55000,
     ...options,
-  }));
+  })));
   return data;
 }
 
@@ -106,11 +122,11 @@ export async function getFlood(lat, lng, geometry, options = {}) {
 export async function getSoil(lat, lng, geometry, options = {}) {
   const params = { lat, lng };
   if (geometry) params.geometry = JSON.stringify(geometry);
-  const { data } = await axios.get(`${BASE}/soil`, withSignal({
+  const { data } = await axios.get(`${BASE}/soil`, withSignal(await authConfig({
     params,
     timeout: 70000,
     ...options,
-  }));
+  })));
   return data;
 }
 
@@ -121,11 +137,11 @@ export async function getSoil(lat, lng, geometry, options = {}) {
 export async function getElevation(lat, lng, geometry, options = {}) {
   const params = { lat, lng };
   if (geometry) params.geometry = JSON.stringify(geometry);
-  const { data } = await axios.get(`${BASE}/elevation`, withSignal({
+  const { data } = await axios.get(`${BASE}/elevation`, withSignal(await authConfig({
     params,
     timeout: 25000,
     ...options,
-  }));
+  })));
   return data;
 }
 
@@ -138,11 +154,11 @@ export async function getElevation(lat, lng, geometry, options = {}) {
 export async function getWetlands(lat, lng, geometry, options = {}) {
   const params = { lat, lng };
   if (geometry) params.geometry = JSON.stringify(geometry);
-  const { data } = await axios.get(`${BASE}/wetlands`, withSignal({
+  const { data } = await axios.get(`${BASE}/wetlands`, withSignal(await authConfig({
     params,
     timeout: 18000,
     ...options,
-  }));
+  })));
   return data;
 }
 
@@ -158,11 +174,11 @@ function filenameFromDisposition(header) {
 export async function downloadDxf({ countyKey, parcelId, neighbors = [], address }) {
   let response;
   try {
-    response = await axios.get(`${BASE}/export/dxf`, {
+    response = await axios.get(`${BASE}/export/dxf`, await authConfig({
       params: { countyKey, parcelId, neighbors: neighbors.join(','), address },
       responseType: 'blob',
       timeout: 90000,
-    });
+    }));
   } catch (err) {
     const blob = err.response?.data;
     if (blob instanceof Blob) {
@@ -183,4 +199,29 @@ export async function downloadDxf({ countyKey, parcelId, neighbors = [], address
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+/** { configured, active, comped? } for the signed-in user. Guests are not billed. */
+export async function billingStatus(sessionId) {
+  const { data } = await axios.get(`${BASE}/billing/status`, await authConfig({
+    params: sessionId ? { session_id: sessionId } : undefined,
+    timeout: 20000,
+  }));
+  return data;
+}
+
+/** Stripe Checkout URL for the $30/month plan. */
+export async function startCheckout() {
+  const { data } = await axios.post(`${BASE}/billing/checkout`, null, await authConfig({
+    timeout: 20000,
+  }));
+  return data;
+}
+
+/** Stripe Customer Portal URL for card updates and cancellation. */
+export async function openBillingPortal() {
+  const { data } = await axios.post(`${BASE}/billing/portal`, null, await authConfig({
+    timeout: 20000,
+  }));
+  return data;
 }

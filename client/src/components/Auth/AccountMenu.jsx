@@ -2,7 +2,14 @@ import React, { memo, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import './Auth.css';
 
-function AccountMenu({ remainingSearches, onSignInClick }) {
+function AccountMenu({
+  remainingSearches,
+  onSignInClick,
+  billingConfigured = false,
+  subscriptionActive = false,
+  onSubscribe,
+  onManageBilling,
+}) {
   const { user, initializing, signOut } = useAuth();
   const [open, setOpen] = useState(false);
   const menuRef = useRef(null);
@@ -48,6 +55,30 @@ function AccountMenu({ remainingSearches, onSignInClick }) {
       {open && (
         <div className="account-dropdown">
           <div className="account-dropdown-email">{user.email || label}</div>
+          {billingConfigured && subscriptionActive && (
+            <button
+              type="button"
+              className="account-dropdown-item"
+              onClick={() => {
+                setOpen(false);
+                onManageBilling();
+              }}
+            >
+              Manage billing
+            </button>
+          )}
+          {billingConfigured && !subscriptionActive && (
+            <button
+              type="button"
+              className="account-dropdown-item"
+              onClick={() => {
+                setOpen(false);
+                onSubscribe();
+              }}
+            >
+              Subscribe — $30/month
+            </button>
+          )}
           <button
             type="button"
             className="account-dropdown-item"

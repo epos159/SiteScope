@@ -10,11 +10,30 @@ const REASON_COPY = {
   },
   export: {
     title: 'Create a free account to export',
-    body: 'PDF, print, PNG, and CSV reports are available with a free SiteScope account.',
+    body: 'PDF, print, PNG, CSV, and DXF reports are available with a free SiteScope account.',
   },
   signin: {
     title: 'Sign in to SiteScope',
     body: 'Unlimited searches and report exports with a free account.',
+  },
+};
+
+const PAID_COPY = {
+  limit: {
+    title: 'Subscribe to keep researching',
+    body: `You've used your ${FREE_SEARCH_LIMIT} free searches. SiteScope is $30 a month for unlimited searches and exports.`,
+  },
+  export: {
+    title: 'Subscribe to export',
+    body: 'PDF, print, PNG, CSV, and DXF reports are included with SiteScope. $30 a month.',
+  },
+  signin: {
+    title: 'Sign in to SiteScope',
+    body: 'Sign in to subscribe. SiteScope is $30 a month after the free searches.',
+  },
+  subscribe: {
+    title: 'Subscribe to SiteScope',
+    body: 'Unlimited searches and exports for York, Adams, Lancaster, Cumberland, Dauphin, and Franklin Counties. $30 a month. Pennsylvania sales tax is added at checkout when it applies.',
   },
 };
 
@@ -36,7 +55,7 @@ function messageFor(err) {
   return ERROR_MESSAGES[err?.code] || 'Something went wrong. Please try again.';
 }
 
-export default function AuthModal({ reason = 'signin', onClose, onSignedIn }) {
+export default function AuthModal({ reason = 'signin', billingConfigured = false, onClose, onSignedIn, onSubscribe }) {
   const { signInWithGoogle, signInWithEmail, signUpWithEmail, resetPassword } = useAuth();
   const [mode, setMode] = useState(reason === 'signin' ? 'signin' : 'signup');
   const [email, setEmail] = useState('');
@@ -44,7 +63,7 @@ export default function AuthModal({ reason = 'signin', onClose, onSignedIn }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
-  const copy = REASON_COPY[reason] || REASON_COPY.signin;
+  const copy = (billingConfigured ? PAID_COPY : REASON_COPY)[reason] || REASON_COPY.signin;
 
   useEffect(() => {
     const onKey = e => e.key === 'Escape' && onClose();
@@ -101,6 +120,29 @@ export default function AuthModal({ reason = 'signin', onClose, onSignedIn }) {
         <h2 id="auth-title" className="auth-title">{copy.title}</h2>
         <p className="auth-body">{copy.body}</p>
 
+        {reason === 'subscribe' ? (
+          <>
+            {error && <p className="auth-error" role="alert">{error}</p>}
+            <button
+              type="button"
+              className="auth-submit"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                setError(null);
+                try {
+                  await onSubscribe();
+                } catch (err) {
+                  setError(err.response?.data?.error || err.message || 'Could not start checkout.');
+                  setBusy(false);
+                }
+              }}
+            >
+              {busy ? 'Opening checkout…' : 'Subscribe — $30/month'}
+            </button>
+          </>
+        ) : (
+          <>
         <button type="button" className="auth-google" onClick={handleGoogle} disabled={busy}>
           <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
             <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
@@ -142,7 +184,7 @@ export default function AuthModal({ reason = 'signin', onClose, onSignedIn }) {
           {notice && <p className="auth-notice">{notice}</p>}
 
           <button type="submit" className="auth-submit" disabled={busy}>
-            {busy ? 'Please wait…' : mode === 'signup' ? 'Create free account' : 'Sign in'}
+            {busy ? 'Please wait…' : mode === 'signup' ? (billingConfigured ? 'Create account' : 'Create free account') : 'Sign in'}
           </button>
         </form>
 
@@ -159,7 +201,7 @@ export default function AuthModal({ reason = 'signin', onClose, onSignedIn }) {
               <span>
                 New to SiteScope?{' '}
                 <button type="button" className="auth-link" onClick={() => setMode('signup')}>
-                  Create a free account
+                  {billingConfigured ? 'Create an account' : 'Create a free account'}
                 </button>
               </span>
               <button type="button" className="auth-link" onClick={handleReset} disabled={busy}>
@@ -168,6 +210,8 @@ export default function AuthModal({ reason = 'signin', onClose, onSignedIn }) {
             </>
           )}
         </div>
+          </>
+        )}
       </div>
     </div>
   );
