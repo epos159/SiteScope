@@ -5,6 +5,7 @@ import {
   GeoJSON,
   WMSTileLayer,
   ZoomControl,
+  ScaleControl,
   useMap,
 } from 'react-leaflet';
 import L from 'leaflet';
@@ -226,6 +227,8 @@ export default function MapView({
         zoomControl={false}
       >
         <ZoomControl position="topleft" />
+        {/* Feet/miles for site work; meters shown underneath for reference. */}
+        <ScaleControl position="bottomleft" imperial metric maxWidth={140} />
 
         {/* ── Base layers. Esri's public tiles need no API key. Imagery has no
             text, so street names come from a transparent reference layer on top. ── */}
