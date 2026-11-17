@@ -15,7 +15,7 @@ router.get('/', async (req, res) => {
   }
 
   try {
-    const matches = await searchCountyAddresses(query, { partial: true, limit: 8, timeout: 6000 });
+    const matches = await searchCountyAddresses(query, { partial: true, limit: 8, timeout: 12000 });
     const suggestions = matches.map(match => ({
       address: match.address,
       detail: [match.municipality, match.countyName].filter(Boolean).join(', '),

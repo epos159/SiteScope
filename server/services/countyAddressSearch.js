@@ -241,7 +241,28 @@ function candidateStreetText(props, county) {
   return composed || full;
 }
 
-function scoreCandidate(query, candidate, municipality, props) {
+/**
+ * "York, PA" is the postal city for many York County parcels whose municipality
+ * is West Manchester Township, Springettsbury, etc. Count the county name too.
+ */
+function localityMatchFor(query, municipality, props, countyName) {
+  let matched = false;
+  let score = 0;
+  if (query.cityTokens.length) {
+    const places = [municipality, countyName].filter(Boolean).map(s => String(s).toUpperCase());
+    if (places.some(place => query.cityTokens.some(t => place.includes(t)))) {
+      score += 20;
+      matched = true;
+    }
+  }
+  if (query.zip && Object.values(props).some(v => typeof v === 'string' && v.includes(query.zip))) {
+    score += 15;
+    matched = true;
+  }
+  return { matched, score };
+}
+
+function scoreCandidate(query, candidate, municipality, props, countyName) {
   if (!candidate || candidate.number !== query.number) return null;
 
   const candidateTokens = [...candidate.core, ...(candidate.suffix ? [candidate.suffix] : [])];
@@ -293,25 +314,14 @@ function scoreCandidate(query, candidate, municipality, props) {
     score -= 3;
   }
 
-  let localityMatch = false;
-  if (query.cityTokens.length && municipality) {
-    const muni = municipality.toUpperCase();
-    if (query.cityTokens.some(t => muni.includes(t))) {
-      score += 20;
-      localityMatch = true;
-    }
-  }
+  const locality = localityMatchFor(query, municipality, props, countyName);
+  score += locality.score;
 
-  if (query.zip && Object.values(props).some(v => typeof v === 'string' && v.includes(query.zip))) {
-    score += 15;
-    localityMatch = true;
-  }
-
-  return { score, localityMatch };
+  return { score, localityMatch: locality.matched };
 }
 
 /** Match a house-number-less place name against the full site address. */
-function scorePlace(query, addressText, municipality, props) {
+function scorePlace(query, addressText, municipality, props, countyName) {
   const parsed = parseStreet(addressText) || parsePlace(addressText);
   if (!parsed) return null;
   const candidateTokens = new Set(tokenize(addressText).map(t => SUFFIXES[t] || ORDINALS[t] || t));
@@ -333,19 +343,9 @@ function scorePlace(query, addressText, municipality, props) {
     score += 12;
   }
 
-  let localityMatch = false;
-  if (query.cityTokens.length && municipality) {
-    const muni = municipality.toUpperCase();
-    if (query.cityTokens.some(t => muni.includes(t))) {
-      score += 20;
-      localityMatch = true;
-    }
-  }
-  if (query.zip && Object.values(props).some(v => typeof v === 'string' && v.includes(query.zip))) {
-    score += 15;
-    localityMatch = true;
-  }
-  return { score, localityMatch };
+  const locality = localityMatchFor(query, municipality, props, countyName);
+  score += locality.score;
+  return { score, localityMatch: locality.matched };
 }
 
 async function searchCounty(countyKey, query, timeout) {
@@ -365,8 +365,8 @@ async function searchCounty(countyKey, query, timeout) {
     const normalized = normalizeParcelProps(props, county, county.fields);
     const streetText = candidateStreetText(props, county);
     const scored = query.place
-      ? scorePlace(query, streetText, normalized.municipality, props)
-      : scoreCandidate(query, parseStreet(streetText), normalized.municipality, props);
+      ? scorePlace(query, streetText, normalized.municipality, props, county.name)
+      : scoreCandidate(query, parseStreet(streetText), normalized.municipality, props, county.name);
     if (!scored || !normalized.parcelId) continue;
     if (!query.partial && scored.score < MIN_FULL_MATCH_SCORE) continue;
 
@@ -474,12 +474,8 @@ async function searchByAddressPoint(countyKey, county, query, timeout) {
       .filter(Boolean)
       .join(' ');
     const municipality = normalized.municipality || null;
-    let localityMatch = false;
-    let score = 84;
-    if (query.cityTokens.length && municipality && query.cityTokens.some(t => municipality.toUpperCase().includes(t))) {
-      score += 20;
-      localityMatch = true;
-    }
+    const locality = localityMatchFor(query, municipality, attrs, county.name);
+    const score = 84 + locality.score;
 
     results.push({
       countyKey,
@@ -490,7 +486,7 @@ async function searchByAddressPoint(countyKey, county, query, timeout) {
       lat: centroid.lat,
       lng: centroid.lng,
       score,
-      localityMatch,
+      localityMatch: locality.matched,
     });
   }
   return results;

@@ -111,6 +111,17 @@
   margin-bottom: 24px;
 }
 
+.app-empty-disclaimer {
+  margin-top: -8px !important;
+  margin-bottom: 24px !important;
+  font-size: var(--font-size-sm) !important;
+  color: var(--color-text-muted) !important;
+}
+
+.app-empty-disclaimer a {
+  color: var(--color-accent);
+}
+
 .app-empty-counties {
   display: flex;
   gap: 8px;

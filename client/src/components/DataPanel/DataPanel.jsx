@@ -31,6 +31,12 @@ export default function DataPanel({ state, onNeighborClick }) {
         <TopographyCard data={elevation} isLoading={isLoading && !elevation} />
         <MunicipalityCard parcel={parcel} location={location} />
       </div>
+
+      <p className="data-panel-disclaimer">
+        Preliminary research only. Public data may be incomplete or outdated. Verify with
+        official records and qualified professionals before design, permitting, or bidding.
+        {' '}<a href="/terms">Terms of Service</a>
+      </p>
     </div>
   );
 }

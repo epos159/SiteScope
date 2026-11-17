@@ -302,6 +302,11 @@ export default function App() {
               SiteScope aggregates parcel data, FEMA flood zones, soils, topography,
               and wetlands into a single pre-construction research report.
             </p>
+            <p className="app-empty-disclaimer">
+              For preliminary research only — verify with official records and qualified
+              professionals before design, permitting, or bidding.
+              {' '}<a href="/terms">Terms</a>
+            </p>
             <div className="app-empty-counties">
               {SUPPORTED_COUNTIES.map(name => (
                 <span key={name} className="badge badge-info">
@@ -369,6 +374,7 @@ export default function App() {
         <p className="app-footer-meta">
           SiteScope by Posch Ventures &nbsp;·&nbsp;{' '}
           <a href="mailto:support@poschventures.com">support@poschventures.com</a>
+          &nbsp;·&nbsp; <a href="/terms">Terms</a>
           &nbsp;·&nbsp; <a href="/privacy">Privacy</a>
           &nbsp;·&nbsp; poschventures.com
         </p>

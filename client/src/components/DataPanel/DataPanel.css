@@ -35,7 +35,21 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
   gap: 16px;
-  padding: 20px 24px 32px;
+  padding: 20px 24px 12px;
+}
+
+.data-panel-disclaimer {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 0 24px 28px;
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.data-panel-disclaimer a {
+  color: var(--color-accent);
 }
 
 /* ─── Data Card Base ──────────────────────────────────────────── */

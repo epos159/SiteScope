@@ -293,11 +293,12 @@ export default function MapView({
         )}
 
         {/* ── FEMA Flood Zones GeoJSON ── */}
+        {/* interactive:false so clicks fall through to the map (pick any parcel). */}
         {layers.flood && floodGeoJSON && (
           <GeoJSON
             key={`flood-${JSON.stringify(floodGeoJSON).length}`}
             data={floodGeoJSON}
-            style={floodStyle}
+            style={feature => ({ ...floodStyle(feature), interactive: false })}
           />
         )}
 
@@ -306,7 +307,7 @@ export default function MapView({
           <GeoJSON
             key={`wetlands-${wetlandGeoJSON.features.length}`}
             data={wetlandGeoJSON}
-            style={wetlandStyle}
+            style={feature => ({ ...wetlandStyle(feature), interactive: false })}
           />
         )}
 
@@ -316,11 +317,13 @@ export default function MapView({
         )}
 
         {/* ── Parcel boundary (always on top of data layers) ── */}
+        {/* Non-interactive so a click on the highlighted lot still reaches MapClickHandler
+            when the user meant a neighbor sitting under the same pin. */}
         {layers.parcel && parcelFeature && (
           <GeoJSON
             key={`parcel-${parcelFeature.properties?.parcelId || 'unknown'}`}
             data={parcelFeature}
-            style={PARCEL_STYLE}
+            style={{ ...PARCEL_STYLE, interactive: false }}
           />
         )}
 

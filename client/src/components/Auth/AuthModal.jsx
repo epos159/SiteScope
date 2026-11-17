@@ -188,6 +188,15 @@ export default function AuthModal({ reason = 'signin', billingConfigured = false
           </button>
         </form>
 
+        {mode === 'signup' && (
+          <p className="auth-legal">
+            By creating an account you agree to our{' '}
+            <a href="/terms" target="_blank" rel="noopener noreferrer">Terms</a>
+            {' '}and{' '}
+            <a href="/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>.
+          </p>
+        )}
+
         <div className="auth-footer">
           {mode === 'signup' ? (
             <span>

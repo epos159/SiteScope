@@ -53,7 +53,8 @@ export async function geocode(address, options = {}) {
 export async function suggestAddresses(query, options = {}) {
   const { data } = await axios.get(`${BASE}/address-suggest`, withSignal({
     params: { q: query },
-    timeout: 8000,
+    // County GIS can be slow; keep this above the server suggest timeout.
+    timeout: 20000,
     ...options,
   }));
   return data;
