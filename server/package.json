@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "SiteScope backend — proxies GIS/government APIs for the client",
   "main": "index.js",
+  "engines": {
+    "node": ">=22.13.0"
+  },
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js"

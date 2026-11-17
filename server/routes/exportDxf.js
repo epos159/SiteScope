@@ -18,14 +18,17 @@ const NWI_ENDPOINT =
 const LAYERS = {
   parcel: ['SS-PARCEL', 7],
   parcelText: ['SS-PARCEL-TEXT', 7],
+  parcelDim: ['SS-PARCEL-DIM', 7],
   adjacent: ['SS-ADJ-PARCELS', 8],
-  adjacentText: ['SS-ADJ-PARCELS-TEXT', 8],
+  // White (7) so neighbor labels stay readable on dark CAD backgrounds; gray (8) washed out.
+  adjacentText: ['SS-ADJ-PARCELS-TEXT', 7],
   floodway: ['SS-FLOODWAY', 1],
   sfha: ['SS-FLOOD-1PCT', 5],
   flood02: ['SS-FLOOD-0_2PCT', 4],
   floodText: ['SS-FLOOD-TEXT', 5],
   wetlands: ['SS-WETLANDS', 3],
   wetlandsText: ['SS-WETLANDS-TEXT', 3],
+  annotation: ['SS-ANNOTATION', 7],
   notes: ['SS-NOTES', 7],
 };
 
@@ -280,6 +283,136 @@ function safeFilename(text) {
   return String(text || 'site').replace(/[^a-z0-9]+/gi, '_').replace(/^_|_$/g, '').slice(0, 50);
 }
 
+function ringSignedArea(ring) {
+  let area = 0;
+  for (let i = 0; i < ring.length - 1; i += 1) {
+    area += ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1];
+  }
+  return area / 2;
+}
+
+function formatFeet(length) {
+  if (length >= 100) return `${Math.round(length)}'`;
+  return `${length.toFixed(1)}'`;
+}
+
+/**
+ * Merge nearly-collinear GIS vertices into straight runs, then place a length
+ * label outside each run long enough to read. Keeps curves from spawning a
+ * label on every tiny segment.
+ */
+function labelRingLengths(dxf, layer, ring, textHeight) {
+  if (!ring || ring.length < 2) return;
+
+  const clockwise = ringSignedArea(ring) < 0;
+  const minLength = Math.max(textHeight * 3, 12);
+  const offset = textHeight * 0.9;
+  const angleTolDeg = 4;
+
+  const runs = [];
+  let runStart = ring[0];
+  let runPrev = ring[0];
+  let runDx = 0;
+  let runDy = 0;
+
+  const flush = end => {
+    const length = Math.hypot(end[0] - runStart[0], end[1] - runStart[1]);
+    if (length >= minLength) runs.push({ start: runStart, end, length });
+  };
+
+  for (let i = 1; i < ring.length; i += 1) {
+    const point = ring[i];
+    const dx = point[0] - runPrev[0];
+    const dy = point[1] - runPrev[1];
+    const segLen = Math.hypot(dx, dy);
+    if (segLen < 0.05) continue;
+
+    if (runDx === 0 && runDy === 0) {
+      runDx = dx;
+      runDy = dy;
+      runPrev = point;
+      continue;
+    }
+
+    const runLen = Math.hypot(runDx, runDy);
+    const dot = (runDx * dx + runDy * dy) / (runLen * segLen);
+    const angle = (Math.acos(Math.max(-1, Math.min(1, dot))) * 180) / Math.PI;
+    if (angle <= angleTolDeg) {
+      runDx = point[0] - runStart[0];
+      runDy = point[1] - runStart[1];
+      runPrev = point;
+      continue;
+    }
+
+    flush(runPrev);
+    runStart = runPrev;
+    runDx = dx;
+    runDy = dy;
+    runPrev = point;
+  }
+  flush(runPrev);
+
+  for (const run of runs) {
+    const dx = run.end[0] - run.start[0];
+    const dy = run.end[1] - run.start[1];
+    const len = Math.hypot(dx, dy);
+    if (len < minLength) continue;
+
+    const ux = dx / len;
+    const uy = dy / len;
+    // Esri exterior rings are typically clockwise; the outward normal is to the right.
+    const nx = clockwise ? uy : -uy;
+    const ny = clockwise ? -ux : ux;
+    let rotation = (Math.atan2(dy, dx) * 180) / Math.PI;
+    if (rotation > 90 || rotation < -90) rotation += 180;
+
+    dxf.addText(
+      layer,
+      [run.start[0] + dx / 2 + nx * offset, run.start[1] + dy / 2 + ny * offset],
+      textHeight * 0.55,
+      formatFeet(run.length),
+      rotation
+    );
+  }
+}
+
+function niceScaleLength(parcelDiag) {
+  const target = Math.max(parcelDiag * 0.35, 50);
+  const steps = [50, 100, 200, 250, 500, 1000, 2000, 5000];
+  return steps.find(s => s >= target) || steps[steps.length - 1];
+}
+
+function drawNorthArrowAndScale(dxf, layer, clipRect, parcelDiag, textHeight) {
+  const scaleLen = niceScaleLength(parcelDiag);
+  const arrowH = Math.max(textHeight * 4.5, 18);
+  const arrowW = arrowH * 0.28;
+  const gap = textHeight * 1.4;
+  const originX = clipRect.xmin;
+  const originY = clipRect.ymin - arrowH - textHeight * 3;
+
+  // North arrow — shaft + filled-looking head made of lines.
+  const tip = [originX + arrowW, originY + arrowH];
+  const base = [originX + arrowW, originY];
+  dxf.addPolyline(layer, [base, tip], false);
+  dxf.addPolyline(layer, [
+    [tip[0] - arrowW * 0.85, tip[1] - arrowH * 0.32],
+    tip,
+    [tip[0] + arrowW * 0.85, tip[1] - arrowH * 0.32],
+  ], false);
+  dxf.addText(layer, [tip[0], tip[1] + textHeight * 0.9], textHeight * 0.85, 'N');
+
+  // Scale bar to the right of the arrow.
+  const barX = originX + arrowW * 2 + gap;
+  const barY = originY + arrowH * 0.18;
+  const tick = Math.max(textHeight * 0.55, 3);
+  dxf.addPolyline(layer, [[barX, barY], [barX + scaleLen, barY]], false);
+  dxf.addPolyline(layer, [[barX, barY - tick], [barX, barY + tick]], false);
+  dxf.addPolyline(layer, [[barX + scaleLen, barY - tick], [barX + scaleLen, barY + tick]], false);
+  dxf.addText(layer, [barX, barY - textHeight * 1.1], textHeight * 0.55, '0');
+  dxf.addText(layer, [barX + scaleLen, barY - textHeight * 1.1], textHeight * 0.55, String(scaleLen));
+  dxf.addText(layer, [barX + scaleLen / 2, barY + textHeight * 1.05], textHeight * 0.6, 'FEET');
+}
+
 router.get('/dxf', async (req, res) => {
   const { countyKey, parcelId, address } = req.query;
   const neighborIds = String(req.query.neighbors || '').split(',').map(s => s.trim()).filter(Boolean);
@@ -357,16 +490,19 @@ router.get('/dxf', async (req, res) => {
         anchor[1] > clipRect.ymin && anchor[1] < clipRect.ymax;
       const point = inside ? anchor : chainsLabelPoint(pieces);
       if (!point) continue;
-      dxf.addText(LAYERS.adjacentText[0], point, textHeight * 0.7, props.ownerName || 'UNKNOWN OWNER');
-      dxf.addText(LAYERS.adjacentText[0], [point[0], point[1] - textHeight], textHeight * 0.6, props.parcelId);
+      dxf.addText(LAYERS.adjacentText[0], point, textHeight * 0.9, props.ownerName || 'UNKNOWN OWNER');
+      dxf.addText(LAYERS.adjacentText[0], [point[0], point[1] - textHeight * 1.05], textHeight * 0.75, props.parcelId);
     }
   } else {
     console.error('[exportDxf] surrounding parcels query failed:', parcelsResult.reason?.message);
     missing.push('adjoining parcels');
   }
 
-  // Subject parcel — always whole and closed.
-  for (const ring of subjectRings) dxf.addPolyline(LAYERS.parcel[0], ring.slice(0, -1), true);
+  // Subject parcel — always whole and closed, with outside length labels.
+  for (const ring of subjectRings) {
+    dxf.addPolyline(LAYERS.parcel[0], ring.slice(0, -1), true);
+    labelRingLengths(dxf, LAYERS.parcelDim[0], ring, textHeight);
+  }
   const subjectLabel = ringsLabelPoint(subjectRings);
   if (subjectLabel) {
     dxf.addText(LAYERS.parcelText[0], [subjectLabel[0], subjectLabel[1] + textHeight * 1.2], textHeight, subjectProps.ownerName || '');
@@ -377,12 +513,15 @@ router.get('/dxf', async (req, res) => {
   }
 
   const placeHazardLabel = createLabelPlacer(textHeight * 1.1);
+  let floodDrawn = 0;
   if (floodResult.status === 'fulfilled') {
     for (const feature of floodResult.value) {
       const attrs = feature.attributes || {};
       const layerKey = floodLayerFor(attrs);
       if (!layerKey || !feature.geometry?.rings) continue;
       const pieces = drawClippedRings(dxf, LAYERS[layerKey][0], feature.geometry.rings, clipRect);
+      if (!pieces.length) continue;
+      floodDrawn += 1;
       const point = placeHazardLabel(chainsLabelPoint(pieces));
       if (point) dxf.addText(LAYERS.floodText[0], point, textHeight * 0.7, floodLabel(attrs, layerKey));
     }
@@ -392,6 +531,7 @@ router.get('/dxf', async (req, res) => {
   }
 
   const wetlandNotes = [];
+  let wetlandDrawn = 0;
   if (wetlandsResult.status === 'fulfilled') {
     for (const w of wetlandsResult.value.oversized) {
       wetlandNotes.push(
@@ -402,12 +542,24 @@ router.get('/dxf', async (req, res) => {
       if (!feature.geometry?.rings) continue;
       const { code, type } = wetlandAttrs(feature.attributes || {});
       const pieces = drawClippedRings(dxf, LAYERS.wetlands[0], feature.geometry.rings, clipRect);
+      if (!pieces.length) continue;
+      wetlandDrawn += 1;
       const point = placeHazardLabel(chainsLabelPoint(pieces));
       if (point) dxf.addText(LAYERS.wetlandsText[0], point, textHeight * 0.7, `NWI ${code}${type ? ` - ${type}` : ''}`);
     }
   } else {
     console.error('[exportDxf] NWI query failed:', wetlandsResult.reason?.message);
     missing.push('NWI wetlands');
+  }
+
+  drawNorthArrowAndScale(dxf, LAYERS.annotation[0], clipRect, diag, textHeight);
+
+  const hazardStatus = [];
+  if (floodResult.status === 'fulfilled' && floodDrawn === 0) {
+    hazardStatus.push(`NO FEMA FLOOD ZONES WITHIN ${Math.round(margin)} FT`);
+  }
+  if (wetlandsResult.status === 'fulfilled' && wetlandDrawn === 0 && wetlandNotes.length === 0) {
+    hazardStatus.push(`NO NWI WETLANDS WITHIN ${Math.round(margin)} FT`);
   }
 
   const locality = [subjectProps.municipality, county.name, 'PA'].filter(Boolean).join(', ');
@@ -420,6 +572,7 @@ router.get('/dxf', async (req, res) => {
     'COORDINATES: NAD83 PA STATE PLANE SOUTH (EPSG:2272), US SURVEY FEET',
     `SOURCES: ${county.name.toUpperCase()} GIS PARCELS, FEMA NFHL, USFWS NWI`,
     `FLOOD AND WETLAND LINES SHOWN WITHIN ${Math.round(margin)} FT OF PARCEL`,
+    ...hazardStatus,
     ...wetlandNotes,
     missing.length ? `NOT AVAILABLE AT EXPORT: ${missing.join(', ').toUpperCase()}` : '',
     `EXPORTED ${new Date().toISOString().slice(0, 10)}`,

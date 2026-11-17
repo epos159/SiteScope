@@ -6,6 +6,7 @@ const {
   getBoundingBox,
   bboxToWkt,
 } = require('../utils/geoUtils');
+const { lookupSoil } = require('../services/soilFallback');
 
 const router = express.Router();
 
@@ -33,17 +34,27 @@ function countVertices(geometry) {
   return count;
 }
 
+function pointBox(lat, lng, bufferDeg) {
+  return { minLng: lng - bufferDeg, maxLng: lng + bufferDeg, minLat: lat - bufferDeg, maxLat: lat + bufferDeg };
+}
+
 function buildSoilAoiCandidates(lat, lng, geometry) {
   const latF = parseFloat(lat);
   const lngF = parseFloat(lng);
   const candidates = [];
 
-  candidates.push({ wkt: pointToBufferWkt(latF, lngF, 0.001), method: 'point-buffer' });
+  candidates.push({ wkt: pointToBufferWkt(latF, lngF, 0.001), method: 'point-buffer', box: pointBox(latF, lngF, 0.001) });
 
   if (geometry) {
     try {
       const bbox = getBoundingBox(geometry);
-      candidates.push({ wkt: bboxToWkt(bbox, 0.0001), method: 'bbox' });
+      const box = {
+        minLng: bbox.minLng - 0.0001,
+        maxLng: bbox.maxLng + 0.0001,
+        minLat: bbox.minLat - 0.0001,
+        maxLat: bbox.maxLat + 0.0001,
+      };
+      candidates.push({ wkt: bboxToWkt(bbox, 0.0001), method: 'bbox', box });
     } catch {
       // ignore
     }
@@ -54,7 +65,7 @@ function buildSoilAoiCandidates(lat, lng, geometry) {
     }
   }
 
-  candidates.push({ wkt: pointToBufferWkt(latF, lngF, 0.003), method: 'point-buffer-wide' });
+  candidates.push({ wkt: pointToBufferWkt(latF, lngF, 0.003), method: 'point-buffer-wide', box: pointBox(latF, lngF, 0.003) });
 
   const seen = new Set();
   return candidates.filter(c => {
@@ -88,34 +99,66 @@ async function querySoil(aoiWkt) {
     { query, format: 'JSON+COLUMNNAME' },
     {
       headers: { 'Content-Type': 'application/json' },
-      timeout: 60000,
+      timeout: 30000,
     }
   );
   return response.data;
+}
+
+function rowToMapUnit(row) {
+  return {
+    mukey: row.mukey,
+    symbol: row.musym,
+    name: row.muname,
+    componentPct: row.comppct_r != null ? parseFloat(row.comppct_r) : null,
+    slopeMin: row.slope_l != null ? parseFloat(row.slope_l) : null,
+    slopeTypical: row.slope_r != null ? parseFloat(row.slope_r) : null,
+    slopeMax: row.slope_h != null ? parseFloat(row.slope_h) : null,
+    slopeClass: slopeToClass(row.slope_r ?? row.slope_h),
+    drainage: row.drainagecl || null,
+    hydrologicGroup: row.hydgrp || null,
+    hydric: row.hydricrating === 'Yes',
+    taxOrder: row.taxorder || null,
+    taxSubgroup: row.taxsubgrp || null,
+  };
 }
 
 function parseSoilTable(table) {
   if (!table || table.length < 2) return [];
 
   const [headers, ...rows] = table;
-  return rows.map(row => {
-    const obj = Object.fromEntries(headers.map((h, i) => [h.toLowerCase(), row[i]]));
-    return {
-      mukey: obj.mukey,
-      symbol: obj.musym,
-      name: obj.muname,
-      componentPct: obj.comppct_r != null ? parseFloat(obj.comppct_r) : null,
-      slopeMin: obj.slope_l != null ? parseFloat(obj.slope_l) : null,
-      slopeTypical: obj.slope_r != null ? parseFloat(obj.slope_r) : null,
-      slopeMax: obj.slope_h != null ? parseFloat(obj.slope_h) : null,
-      slopeClass: slopeToClass(obj.slope_r ?? obj.slope_h),
-      drainage: obj.drainagecl || null,
-      hydrologicGroup: obj.hydgrp || null,
-      hydric: obj.hydricrating === 'Yes',
-      taxOrder: obj.taxorder || null,
-      taxSubgroup: obj.taxsubgrp || null,
-    };
-  });
+  return rows.map(row => rowToMapUnit(Object.fromEntries(headers.map((h, i) => [h.toLowerCase(), row[i]]))));
+}
+
+// Timeouts, network failures and 5xx mean SDA itself is down; 4xx is specific to that AOI.
+function isServiceFailure(err) {
+  const status = err.response?.status;
+  return !status || status >= 500;
+}
+
+function formatVersionDate(value) {
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})/.exec(value || '');
+  return match ? `${match[1]}/${match[2]}/${match[3]}` : null;
+}
+
+function fallbackResponse(candidates) {
+  let result;
+  try {
+    result = lookupSoil(candidates.filter(c => c.box));
+  } catch (err) {
+    console.error('[soil] local fallback failed:', err.message);
+    return null;
+  }
+  if (!result) return null;
+
+  const versions = [...new Set(result.surveyAreas.map(s => formatVersionDate(s.versionDate)).filter(Boolean))];
+  return {
+    mapUnits: result.rows.map(rowToMapUnit),
+    queryMethod: result.method,
+    source: `USDA NRCS SSURGO (SiteScope backup copy${versions.length ? `, survey version ${versions.join(', ')}` : ''})`,
+    notice: 'USDA’s live soil service is unavailable, so this comes from SiteScope’s backup copy of the same USDA survey.',
+    fallback: true,
+  };
 }
 
 router.get('/', async (req, res) => {
@@ -149,10 +192,16 @@ router.get('/', async (req, res) => {
       lastError = err;
       const detail = err.response?.data ? JSON.stringify(err.response.data).slice(0, 200) : err.message;
       console.warn(`[soil] ${candidate.method} failed:`, detail);
+      if (isServiceFailure(err)) break;
     }
   }
 
   if (lastError) {
+    const fallback = fallbackResponse(candidates);
+    if (fallback) {
+      console.warn(`[soil] served ${fallback.mapUnits.length} map units from local fallback`);
+      return res.json(fallback);
+    }
     console.error('[soil] all queries failed');
     return res.json({
       error: true,

@@ -46,6 +46,7 @@ export default function SoilCard({ data, isLoading, onRetry }) {
 
         {!isLoading && units.length > 0 && (
           <>
+            {data.notice && <p className="data-card-notice">{data.notice}</p>}
             {units.map((unit, i) => (
               <div key={unit.mukey || i} className="soil-unit">
                 <div className="soil-unit-header">

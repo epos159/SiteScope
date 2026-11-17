@@ -3,6 +3,9 @@
   "version": "1.0.1",
   "description": "SiteScope — Pre-construction site research tool by Posch Ventures",
   "private": true,
+  "engines": {
+    "node": ">=22.13.0"
+  },
   "scripts": {
     "dev:server": "cd server && npm run dev",
     "dev:client": "cd client && npm run dev",

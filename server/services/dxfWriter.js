@@ -54,20 +54,24 @@ function createDxf() {
       entities.push(lines);
     },
 
-    addText(layer, [x, y], height, text) {
+    addText(layer, [x, y], height, text, rotationDeg = 0) {
       const value = cleanText(text);
       if (!value) return;
       const name = cleanLayerName(layer);
       extend(x, y);
-      entities.push([
+      const lines = [
         '0', 'TEXT', '8', name,
         '10', fmt(x), '20', fmt(y), '30', '0.0',
         '40', fmt(height),
         '1', value,
+      ];
+      if (rotationDeg) lines.push('50', fmt(rotationDeg));
+      lines.push(
         '72', '1',
         '73', '2',
         '11', fmt(x), '21', fmt(y), '31', '0.0',
-      ]);
+      );
+      entities.push(lines);
     },
 
     /** Left-aligned text, for the notes block. */
