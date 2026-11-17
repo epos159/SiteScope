@@ -20,7 +20,7 @@ const LIMIT_ERRORS = new Set(['free_limit', 'subscription_required']);
 const INITIAL_BILLING = { configured: false, enforced: false, active: false, freeRemaining: null };
 
 export default function App() {
-  const { state, search, searchByCoords, cancelSearch } = useSiteData();
+  const { state, search, searchByCoords, cancelSearch, retryLayer } = useSiteData();
   const { isAuthConfigured, user, sessionUid } = useAuth();
   const { remaining: localRemaining, recordSearch, hasSearched } = useFreeSearches();
   const mapRef = useRef(null);
@@ -283,7 +283,7 @@ export default function App() {
       {/* ── Data Panel ── */}
       {hasResults && (
         <div className="app-data-section" ref={dataPanelRef} id="data-panel-section">
-          <DataPanel state={state} onNeighborClick={handleParcelClick} />
+          <DataPanel state={state} onNeighborClick={handleParcelClick} onRetryLayer={retryLayer} />
         </div>
       )}
 

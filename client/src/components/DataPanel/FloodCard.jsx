@@ -1,7 +1,8 @@
 import React from 'react';
+import CardRetryButton from './CardRetryButton';
 import './DataPanel.css';
 
-export default function FloodCard({ data, isLoading }) {
+export default function FloodCard({ data, isLoading, onRetry }) {
   const isSFHA = data?.sfha;
 
   return (
@@ -9,6 +10,7 @@ export default function FloodCard({ data, isLoading }) {
       <div className="data-card-header">
         <span className="data-card-icon">🌊</span>
         <h3 className="data-card-title">Flood Information</h3>
+        {!isLoading && data?.error && onRetry && <CardRetryButton label="flood data" onRetry={onRetry} />}
       </div>
       <div className="data-card-body">
         {isLoading && (

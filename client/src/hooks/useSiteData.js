@@ -13,6 +13,14 @@ const initialState = {
   soil: null,
   elevation: null,
   wetlands: null,
+  retrying: {},
+};
+
+const LAYER_FETCHERS = {
+  flood: api.getFlood,
+  soil: api.getSoil,
+  elevation: api.getElevation,
+  wetlands: api.getWetlands,
 };
 
 function isAbortError(err) {
@@ -33,7 +41,7 @@ async function loadLayer(key, fetcher, setState, isStale) {
   }
 }
 
-async function loadAllData({ lat, lng, countyKey, searchedAddress, parcelId }, setState, { signal, isStale }) {
+async function loadAllData({ lat, lng, countyKey, searchedAddress, parcelId }, setState, { signal, isStale, onLayerQuery }) {
   const requestOptions = { signal };
 
   // Parcel first — geometry feeds centroid for downstream queries.
@@ -64,15 +72,15 @@ async function loadAllData({ lat, lng, countyKey, searchedAddress, parcelId }, s
   const centroid = getFeatureCentroid(geometry);
   const queryLat = centroid?.lat ?? lat;
   const queryLng = centroid?.lng ?? lng;
+  onLayerQuery?.({ lat: queryLat, lng: queryLng, geometry });
 
   // Fire all layer requests in parallel; update each card as its response arrives.
   // Fast layers (flood, elevation, wetlands) typically render before slow ones (soil).
-  await Promise.all([
-    loadLayer('flood', () => api.getFlood(queryLat, queryLng, geometry, requestOptions), setState, isStale),
-    loadLayer('elevation', () => api.getElevation(queryLat, queryLng, geometry, requestOptions), setState, isStale),
-    loadLayer('wetlands', () => api.getWetlands(queryLat, queryLng, geometry, requestOptions), setState, isStale),
-    loadLayer('soil', () => api.getSoil(queryLat, queryLng, geometry, requestOptions), setState, isStale),
-  ]);
+  await Promise.all(
+    Object.entries(LAYER_FETCHERS).map(([key, fetcher]) =>
+      loadLayer(key, () => fetcher(queryLat, queryLng, geometry, requestOptions), setState, isStale)
+    )
+  );
 
   if (!isStale()) {
     setState(prev => ({ ...prev, status: 'done' }));
@@ -86,6 +94,7 @@ export function useSiteData() {
   const [state, setState] = useState(initialState);
   const abortRef = useRef(null);
   const searchGenRef = useRef(0);
+  const layerQueryRef = useRef(null);
 
   const beginSearch = useCallback(() => {
     abortRef.current?.abort();
@@ -93,8 +102,34 @@ export function useSiteData() {
     abortRef.current = controller;
     const generation = ++searchGenRef.current;
     const isStale = () => generation !== searchGenRef.current;
+    layerQueryRef.current = null;
+    const onLayerQuery = query => {
+      if (!isStale()) layerQueryRef.current = query;
+    };
 
-    return { signal: controller.signal, isStale };
+    return { signal: controller.signal, isStale, onLayerQuery };
+  }, []);
+
+  /** Re-request one layer for the current site, leaving the rest of the report alone. */
+  const retryLayer = useCallback(async key => {
+    const fetcher = LAYER_FETCHERS[key];
+    const query = layerQueryRef.current;
+    if (!fetcher || !query) return;
+
+    const generation = searchGenRef.current;
+    const isStale = () => generation !== searchGenRef.current;
+    const signal = abortRef.current?.signal;
+
+    setState(prev => ({ ...prev, retrying: { ...prev.retrying, [key]: true } }));
+    await loadLayer(
+      key,
+      () => fetcher(query.lat, query.lng, query.geometry, { signal }),
+      setState,
+      isStale
+    );
+    if (!isStale()) {
+      setState(prev => ({ ...prev, retrying: { ...prev.retrying, [key]: false } }));
+    }
   }, []);
 
   const cancelSearch = useCallback(() => {
@@ -111,7 +146,7 @@ export function useSiteData() {
   const search = useCallback(async (address, match = null) => {
     if (!address?.trim()) return;
 
-    const { signal, isStale } = beginSearch();
+    const { signal, isStale, onLayerQuery } = beginSearch();
     setState({ ...initialState, status: 'loading' });
 
     let location;
@@ -151,7 +186,7 @@ export function useSiteData() {
         parcelId: location.parcelId,
       },
       setState,
-      { signal, isStale }
+      { signal, isStale, onLayerQuery }
     );
   }, [beginSearch]);
 
@@ -161,7 +196,7 @@ export function useSiteData() {
    */
   const searchByCoords = useCallback(async (lat, lng, countyKey, ownerLabel) => {
     const effectiveCountyKey = countyKey || inferCountyKey(lat, lng);
-    const { signal, isStale } = beginSearch();
+    const { signal, isStale, onLayerQuery } = beginSearch();
 
     setState(prev => ({
       ...initialState,
@@ -177,8 +212,8 @@ export function useSiteData() {
       },
     }));
 
-    await loadAllData({ lat, lng, countyKey: effectiveCountyKey }, setState, { signal, isStale });
+    await loadAllData({ lat, lng, countyKey: effectiveCountyKey }, setState, { signal, isStale, onLayerQuery });
   }, [beginSearch]);
 
-  return { state, search, searchByCoords, cancelSearch };
+  return { state, search, searchByCoords, cancelSearch, retryLayer };
 }

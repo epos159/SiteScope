@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
+import CardRetryButton from './CardRetryButton';
 import './DataPanel.css';
 
-export default function SoilCard({ data, isLoading }) {
+export default function SoilCard({ data, isLoading, onRetry }) {
   const [expanded, setExpanded] = useState(null);
   const units = data?.mapUnits || [];
 
@@ -10,6 +11,7 @@ export default function SoilCard({ data, isLoading }) {
       <div className="data-card-header">
         <span className="data-card-icon">🌱</span>
         <h3 className="data-card-title">Soil Information</h3>
+        {!isLoading && data?.error && onRetry && <CardRetryButton label="soil data" onRetry={onRetry} />}
       </div>
       <div className="data-card-body">
         {isLoading && (

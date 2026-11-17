@@ -81,6 +81,26 @@
   letter-spacing: -0.01em;
 }
 
+.data-card-retry {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  margin-left: auto;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-accent);
+  cursor: pointer;
+}
+
+.data-card-retry:hover {
+  background: var(--color-accent-light);
+  border-color: var(--color-accent);
+}
+
 .data-card-body {
   padding: 16px 18px;
 }

@@ -1,12 +1,14 @@
 import React from 'react';
+import CardRetryButton from './CardRetryButton';
 import './DataPanel.css';
 
-export default function TopographyCard({ data, isLoading }) {
+export default function TopographyCard({ data, isLoading, onRetry }) {
   return (
     <div className="data-card">
       <div className="data-card-header">
         <span className="data-card-icon">⛰️</span>
         <h3 className="data-card-title">Topography</h3>
+        {!isLoading && data?.error && onRetry && <CardRetryButton label="elevation data" onRetry={onRetry} />}
       </div>
       <div className="data-card-body">
         {isLoading && (
