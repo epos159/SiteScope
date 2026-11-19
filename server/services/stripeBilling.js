@@ -116,6 +116,7 @@ async function createCheckoutSession(decoded) {
     cancel_url: `${origin}/?checkout=cancel`,
     billing_address_collection: 'required',
     customer_update: { address: 'auto' },
+    allow_promotion_codes: true,
     metadata: { firebaseUid: decoded.uid },
     subscription_data: { metadata: { firebaseUid: decoded.uid } },
     ...(automaticTax ? { automatic_tax: { enabled: true } } : {}),
