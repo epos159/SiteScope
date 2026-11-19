@@ -3,9 +3,46 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SiteScope — by Posch Ventures</title>
-    <meta name="description" content="Pre-construction site research tool for GCs, engineers, and permit coordinators in Pennsylvania." />
+    <title>SiteScope — Pre-Construction Site Research for Pennsylvania | Posch Ventures</title>
+    <meta name="description" content="Search a Pennsylvania address and get parcel data, FEMA flood zones, USDA soils, topography, and wetlands in one pre-construction report, with PDF and CAD (DXF) export. York, Adams, Lancaster, Cumberland, Dauphin, and Franklin Counties." />
+    <link rel="canonical" href="https://sitescope.poschventures.com/" />
     <link rel="icon" type="image/png" href="/favicon.png" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="SiteScope by Posch Ventures" />
+    <meta property="og:title" content="SiteScope — Know the site before you bid the job" />
+    <meta property="og:description" content="Parcel data, FEMA flood zones, soils, topography, and wetlands for any address in six south-central Pennsylvania counties, in one report with PDF and DXF export." />
+    <meta property="og:url" content="https://sitescope.poschventures.com/" />
+    <meta property="og:image" content="https://sitescope.poschventures.com/sitescope_logo.png" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="SiteScope — Know the site before you bid the job" />
+    <meta name="twitter:description" content="Pre-construction site research for Pennsylvania: parcels, flood zones, soils, topography, and wetlands in one report." />
+    <meta name="twitter:image" content="https://sitescope.poschventures.com/sitescope_logo.png" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "SiteScope",
+        "url": "https://sitescope.poschventures.com/",
+        "applicationCategory": "BusinessApplication",
+        "operatingSystem": "Web browser",
+        "description": "Pre-construction site research tool for contractors, engineers, and permit coordinators in Pennsylvania. Combines county parcel records, FEMA flood zones, USDA soils, USGS topography, and National Wetlands Inventory data into one report with PDF, CSV, and DXF export.",
+        "areaServed": ["York County, PA", "Adams County, PA", "Lancaster County, PA", "Cumberland County, PA", "Dauphin County, PA", "Franklin County, PA"],
+        "offers": {
+          "@type": "Offer",
+          "price": "30.00",
+          "priceCurrency": "USD",
+          "description": "Monthly subscription with unlimited searches and exports. Five free searches without an account."
+        },
+        "publisher": {
+          "@type": "Organization",
+          "name": "Posch Ventures LLC",
+          "url": "https://poschventures.com/"
+        }
+      }
+    </script>
+
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -20,9 +57,58 @@
 
       gtag('config', 'G-3ZSH3QSKG0');
     </script>
+
+    <style>
+      .static-intro { max-width: 720px; margin: 48px auto; padding: 0 20px; font-family: Inter, system-ui, sans-serif; color: #1e293b; line-height: 1.6; }
+      .static-intro h1 { font-size: 1.75rem; margin: 0 0 8px; }
+      .static-intro h2 { font-size: 1.1rem; margin: 28px 0 8px; }
+      .static-intro ul { padding-left: 20px; margin: 0; }
+      .static-intro .tagline { font-size: 1.1rem; color: #475569; margin: 0 0 16px; }
+      .static-intro .fine { font-size: 0.85rem; color: #64748b; }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Plain HTML for search engines, AI tools, and link previews that don't run JavaScript. React replaces it on load. -->
+      <main class="static-intro">
+        <h1>SiteScope: pre-construction site research for Pennsylvania</h1>
+        <p class="tagline">Know the site before you bid the job.</p>
+        <p>
+          SiteScope pulls the public data a contractor, engineer, or permit coordinator checks before
+          bidding or designing a project into a single report. Search any address in a supported county and
+          see the parcel on a satellite map with everything below in one place.
+        </p>
+
+        <h2>What a SiteScope report includes</h2>
+        <ul>
+          <li><strong>Parcel records</strong> from county GIS: boundary, parcel ID, owner, acreage, and adjoining parcels.</li>
+          <li><strong>FEMA flood zones</strong> from the National Flood Hazard Layer, including floodway and base flood elevation where mapped.</li>
+          <li><strong>Soils</strong> from the USDA NRCS soil survey (SSURGO): soil type, slope class, drainage, hydrologic group, and hydric rating.</li>
+          <li><strong>Topography</strong> from USGS 3DEP elevation data: elevation range and slope across the parcel.</li>
+          <li><strong>Wetlands</strong> from the U.S. Fish and Wildlife Service National Wetlands Inventory.</li>
+        </ul>
+
+        <h2>Exports</h2>
+        <p>
+          Download the report as PDF, PNG, or CSV, or export a DXF drawing for AutoCAD, Civil 3D, and other CAD
+          software. The DXF uses PA State Plane South coordinates and includes the parcel boundary with lengths,
+          adjoining parcels, flood zones, and wetlands on separate layers.
+        </p>
+
+        <h2>Counties covered</h2>
+        <p>York, Adams, Lancaster, Cumberland, Dauphin, and Franklin Counties, Pennsylvania. More counties are coming.</p>
+
+        <h2>Pricing</h2>
+        <p>Five free searches without an account. After that, $30 a month for unlimited searches and exports.</p>
+
+        <p class="fine">
+          SiteScope is for preliminary research only. Verify with official records and qualified professionals
+          before design, permitting, or bidding. A product of Posch Ventures LLC, Pennsylvania.
+          <a href="/terms">Terms of Service</a> · <a href="/privacy">Privacy Policy</a>
+        </p>
+        <noscript><p>SiteScope's interactive map requires JavaScript. Please enable it to search addresses.</p></noscript>
+      </main>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

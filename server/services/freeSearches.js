@@ -8,7 +8,7 @@ const FREE_LIMIT = 5;
 const NEARBY_KM = 2;
 // Clearing the browser starts a new anonymous visitor. This caps how many free
 // searches one network can pull per day that way.
-const DAILY_IP_LIMIT = 30;
+const DAILY_IP_LIMIT = 15;
 const CACHE_MS = 5 * 60_000;
 
 /** uid -> { anchors: [{ lat, lng, at }], at } */

@@ -69,22 +69,42 @@ function buildQueryEnvelope(lat, lng, parsedGeometry) {
   };
 }
 
+// hazards.fema.gov intermittently drops connections during the TLS handshake,
+// failing in under a second. Retry those quickly; a genuine slow response
+// still gets the full timeout, and isn't retried so the client's 55 s limit holds.
+const FEMA_RETRY_DELAYS_MS = [750, 1500, 3000];
+
+function isQuickConnectionFailure(err) {
+  if (err.code === 'ECONNABORTED' || err.code === 'ETIMEDOUT') return false;
+  return !err.response || err.response.status >= 500;
+}
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
 async function queryFema(envelopeJson, returnGeometry) {
-  const response = await axios.get(FEMA_ENDPOINT, {
-    params: {
-      geometry: envelopeJson,
-      geometryType: 'esriGeometryEnvelope',
-      inSR: 4326,
-      spatialRel: 'esriSpatialRelIntersects',
-      outFields: FEMA_OUT_FIELDS,
-      returnGeometry,
-      outSR: 4326,
-      resultRecordCount: 50,
-      f: 'json',
-    },
-    timeout: 45000,
-  });
-  return response.data;
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      const response = await axios.get(FEMA_ENDPOINT, {
+        params: {
+          geometry: envelopeJson,
+          geometryType: 'esriGeometryEnvelope',
+          inSR: 4326,
+          spatialRel: 'esriSpatialRelIntersects',
+          outFields: FEMA_OUT_FIELDS,
+          returnGeometry,
+          outSR: 4326,
+          resultRecordCount: 50,
+          f: 'json',
+        },
+        timeout: 45000,
+      });
+      return response.data;
+    } catch (err) {
+      if (attempt >= FEMA_RETRY_DELAYS_MS.length || !isQuickConnectionFailure(err)) throw err;
+      console.warn(`[flood] FEMA attempt ${attempt + 1} failed (${err.code || err.response?.status}), retrying`);
+      await sleep(FEMA_RETRY_DELAYS_MS[attempt]);
+    }
+  }
 }
 
 /**

@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /__/
+
+Sitemap: https://sitescope.poschventures.com/sitemap.xml
